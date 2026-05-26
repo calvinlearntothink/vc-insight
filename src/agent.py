@@ -318,7 +318,7 @@ def analyze_tweets(all_tweets):
     prompt = TWEET_BRIEFING_PROMPT.format(tweets_data=tweets_data)
     message = client.messages.create(
         model="claude-sonnet-4-20250514",
-        max_tokens=3000,
+        max_tokens=6000,
         messages=[{"role": "user", "content": prompt}],
     )
     raw = message.content[0].text.strip()
