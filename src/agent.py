@@ -1,5 +1,3 @@
-from dotenv import load_dotenv
-load_dotenv(override=True)
 import os
 import json
 import time
@@ -20,11 +18,26 @@ NOTION_DATABASE_ID = os.environ["NOTION_DATABASE_ID"]
 
 # ── 블로그 소스 ───────────────────────────────────────
 BLOG_SOURCES = [
-    {"name": "a16z Crypto",       "url": "https://a16zcrypto.com/posts/"},
-    {"name": "Paradigm",          "url": "https://www.paradigm.xyz/writing"},
-    {"name": "Multicoin Capital", "url": "https://multicoin.capital/writing/"},
-    {"name": "Pantera Capital",   "url": "https://panteracapital.com/blockchain-letter/"},
-    {"name": "Galaxy Digital",    "url": "https://www.galaxy.com/insights/"},
+    {"name": "a16z Crypto",       "url": "https://a16zcrypto.com/posts/",                 "type": "scrape"},
+    {"name": "Paradigm",          "url": "https://www.paradigm.xyz/writing",              "type": "scrape"},
+    {"name": "Multicoin Capital", "url": "https://multicoin.capital/writing/",            "type": "scrape"},
+    {"name": "Pantera Capital",   "url": "https://panteracapital.com/blockchain-letter/", "type": "scrape"},
+    {"name": "Galaxy Digital",    "url": "https://www.galaxy.com/insights/",              "type": "scrape"},
+    {"name": "Spartan Group",     "url": "https://www.spartangroup.io/insights",          "type": "scrape"},
+    {"name": "Dragonfly",         "url": "https://medium.com/feed/dragonfly-research",    "type": "rss"},
+    {"name": "Arthur Hayes",      "url": "https://cryptohayes.substack.com/feed",         "type": "rss"},
+    {"name": "Messari",           "url": "https://messari.io/rss/news",                   "type": "rss"},
+    {"name": "The Block",         "url": "https://www.theblock.co/rss.xml",               "type": "rss"},
+    {"name": "Spartan Medium",    "url": "https://medium.com/feed/the-spartan-group",     "type": "rss"},
+]
+
+# ── URL 필터 (공통 제외 키워드) ───────────────────────
+URL_EXCLUDE_KEYWORDS = [
+    "/team/", "/careers/", "/jobs/", "/about/", "/portfolio/",
+    "/contact/", "/press/", "/events/", "/legal/", "/privacy/",
+    "/login/", "/subscribe/", "/newsletter/", "/search/",
+    "/leadership/", "/board/", "/newsroom/", "/shop/",
+    "/our-team/", "/accelerator/", "/voices-onchain/", "/readwriteown/",
 ]
 
 # ── X 계정 (Nitter) ───────────────────────────────────
@@ -126,7 +139,15 @@ def scrape_blog_links(source, fetcher):
             continue
         if href.startswith("/"):
             href = f"{base.scheme}://{base.netloc}{href}"
-        if href.startswith("http") and href not in seen_links:
+        if not href.startswith("http"):
+            continue
+        # URL 필터 적용
+        if any(kw in href for kw in URL_EXCLUDE_KEYWORDS):
+            continue
+        # 소스 페이지 자체 URL 제외
+        if href.rstrip("/") == source["url"].rstrip("/"):
+            continue
+        if href not in seen_links:
             seen_links.add(href)
             links.append({"title": text, "link": href})
     return links[:5]
@@ -138,22 +159,38 @@ def scrape_blog_content(url, fetcher):
     except:
         return ""
 
+def fetch_rss_links(source):
+    """RSS 피드에서 최신 글 5개 가져오기"""
+    feed = feedparser.parse(source["url"])
+    links = []
+    for entry in feed.entries[:5]:
+        link = entry.get("link", "")
+        title = entry.get("title", "")
+        published = entry.get("published", datetime.now().strftime("%Y-%m-%d"))
+        if link and title:
+            links.append({"title": title, "link": link, "published": published})
+    return links
+
 def fetch_new_blogs(seen, fetcher):
     new_entries = []
     for source in BLOG_SOURCES:
         try:
-            links = scrape_blog_links(source, fetcher)
+            source_type = source.get("type", "scrape")
+            if source_type == "rss":
+                links = fetch_rss_links(source)
+            else:
+                links = scrape_blog_links(source, fetcher)
             print(f"{source['name']} 블로그: {len(links)}개 링크")
             for item in links:
                 if item["link"] not in seen:
                     content = scrape_blog_content(item["link"], fetcher)
-                    if len(content) > 500:  # 내용 없는 페이지 제외
+                    if len(content) > 500:
                         new_entries.append({
                             "source": source["name"],
                             "title": item["title"],
                             "link": item["link"],
                             "content": content,
-                            "published": datetime.now().strftime("%Y-%m-%d"),
+                            "published": item.get("published", datetime.now().strftime("%Y-%m-%d")),
                             "type": "blog",
                         })
                     seen.add(item["link"])
@@ -318,12 +355,20 @@ def analyze_tweets(all_tweets):
     prompt = TWEET_BRIEFING_PROMPT.format(tweets_data=tweets_data)
     message = client.messages.create(
         model="claude-sonnet-4-20250514",
-        max_tokens=6000,
+        max_tokens=4000,
         messages=[{"role": "user", "content": prompt}],
     )
     raw = message.content[0].text.strip()
     raw = raw.replace("```json", "").replace("```", "").strip()
-    return json.loads(raw)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        try:
+            if not raw.endswith("]}"):
+                raw = raw + "]}"
+            return json.loads(raw)
+        except:
+            return {"selected_tweets": []}
 
 # ── 텔레그램 전송 ─────────────────────────────────────
 def send_telegram(text):
@@ -403,6 +448,12 @@ NOTION_IMPORTANCE = {
     "low":    "⚪ 아카이브",
 }
 
+def to_str(val):
+    """리스트나 다른 타입을 string으로 변환"""
+    if isinstance(val, list):
+        return ", ".join(str(v) for v in val)
+    return str(val) if val else ""
+
 def save_blog_to_notion(entry, analysis):
     notion = Client(auth=NOTION_API_KEY)
     importance = NOTION_IMPORTANCE.get(analysis["importance"], "⚪ 아카이브")
@@ -416,19 +467,19 @@ def save_blog_to_notion(entry, analysis):
         parent={"database_id": NOTION_DATABASE_ID},
         properties={
             "제목":               {"title": [{"text": {"content": entry["title"][:200]}}]},
-            "출처":               {"rich_text": [{"text": {"content": entry["source"]}}]},
+            "출처":               {"rich_text": [{"text": {"content": to_str(entry["source"])}}]},
             "중요도":             {"select": {"name": importance}},
             "섹터":               {"multi_select": [{"name": s} for s in analysis.get("sector_tags", [])]},
             "날짜":               {"date": {"start": pub_date}},
-            "핵심 논지":          {"rich_text": [{"text": {"content": analysis["summary"]}}]},
-            "VC 의도":            {"rich_text": [{"text": {"content": analysis["vc_intent"]}}]},
-            "맥락":               {"rich_text": [{"text": {"content": analysis["context"]}}]},
-            "반대 의견":          {"rich_text": [{"text": {"content": analysis["counter_argument"]}}]},
-            "모르면 안되는 개념": {"rich_text": [{"text": {"content": analysis["must_know"]}}]},
-            "연관 프로젝트":      {"rich_text": [{"text": {"content": analysis["related_projects"]}}]},
-            "데이터 근거":        {"rich_text": [{"text": {"content": analysis["data_check"]}}]},
-            "더 파볼 것":         {"rich_text": [{"text": {"content": analysis["further_reading"]}}]},
-            "콜 질문":            {"rich_text": [{"text": {"content": analysis["call_questions"]}}]},
+            "핵심 논지":          {"rich_text": [{"text": {"content": to_str(analysis.get("summary", ""))[:2000]}}]},
+            "VC 의도":            {"rich_text": [{"text": {"content": to_str(analysis.get("vc_intent", ""))[:2000]}}]},
+            "맥락":               {"rich_text": [{"text": {"content": to_str(analysis.get("context", ""))[:2000]}}]},
+            "반대 의견":          {"rich_text": [{"text": {"content": to_str(analysis.get("counter_argument", ""))[:2000]}}]},
+            "모르면 안되는 개념": {"rich_text": [{"text": {"content": to_str(analysis.get("must_know", ""))[:2000]}}]},
+            "연관 프로젝트":      {"rich_text": [{"text": {"content": to_str(analysis.get("related_projects", ""))[:2000]}}]},
+            "데이터 근거":        {"rich_text": [{"text": {"content": to_str(analysis.get("data_check", ""))[:2000]}}]},
+            "더 파볼 것":         {"rich_text": [{"text": {"content": to_str(analysis.get("further_reading", ""))[:2000]}}]},
+            "콜 질문":            {"rich_text": [{"text": {"content": to_str(analysis.get("call_questions", ""))[:2000]}}]},
             "내 포지션":          {"rich_text": [{"text": {"content": ""}}]},
             "원문 링크":          {"url": entry["link"]},
             "처리 여부":          {"checkbox": False},
@@ -437,18 +488,47 @@ def save_blog_to_notion(entry, analysis):
 
 def save_tweet_briefing_to_notion(result, date_str):
     notion = Client(auth=NOTION_API_KEY)
-    content = json.dumps(result, ensure_ascii=False, indent=2)[:2000]
+    # 중복 저장 방지
+    existing = notion.databases.query(
+        database_id=NOTION_DATABASE_ID,
+        filter={
+            "and": [
+                {"property": "출처", "rich_text": {"equals": "X 브리핑"}},
+                {"property": "날짜", "date": {"equals": date_str}},
+            ]
+        }
+    )
+    if existing["results"]:
+        print("오늘 X 브리핑 이미 저장됨, 스킵")
+        return
+
+    # 읽기 좋은 텍스트로 변환
+    lines = []
+    for t in result.get("selected_tweets", []):
+        emoji = "🔴" if t.get("importance") == "high" else "🟡"
+        lines.append(f"{emoji} @{t.get('handle')} ({t.get('name')})")
+        lines.append(f"📂 {', '.join(t.get('sector_tags', []))}")
+        lines.append(f"💬 {t.get('content', '')[:200]}")
+        lines.append(f"🔗 {t.get('link', '')}")
+        lines.append(f"📌 {t.get('summary', '')}")
+        lines.append(f"🎯 {t.get('why_matters', '')}")
+        lines.append(f"⚡ {t.get('counter', '')}")
+        lines.append(f"🔍 더 파볼 것: {t.get('further_reading', '')}")
+        lines.append("━━━━━━━━━━━━")
+    content = "\n".join(lines)[:2000]
+
     notion.pages.create(
         parent={"database_id": NOTION_DATABASE_ID},
         properties={
-            "제목":     {"title": [{"text": {"content": f"X 브리핑 | {date_str}"}}]},
-            "출처":     {"rich_text": [{"text": {"content": "X 브리핑"}}]},
-            "중요도":   {"select": {"name": "🟡 참고용"}},
-            "날짜":     {"date": {"start": date_str}},
-            "핵심 논지":{"rich_text": [{"text": {"content": content}}]},
-            "처리 여부":{"checkbox": False},
+            "제목":      {"title": [{"text": {"content": f"X 브리핑 | {date_str}"}}]},
+            "출처":      {"rich_text": [{"text": {"content": "X 브리핑"}}]},
+            "중요도":    {"select": {"name": "🟡 참고용"}},
+            "날짜":      {"date": {"start": date_str}},
+            "핵심 논지": {"rich_text": [{"text": {"content": content}}]},
+            "처리 여부": {"checkbox": False},
         },
     )
+    print("X 브리핑 Notion 저장 완료")
 
 # ── 메인 ─────────────────────────────────────────────
 def main():
