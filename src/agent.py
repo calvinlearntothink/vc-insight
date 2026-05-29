@@ -370,7 +370,8 @@ def analyze_tweets(all_tweets):
             if not raw.endswith("]}"):
                 raw = raw + "]}"
             return json.loads(raw)
-        except:
+        except Exception as e2:
+            print(f"JSON 파싱 실패: {e2}. raw: {raw[:300]}")
             return {"selected_tweets": []}
 
 # ── 텔레그램 전송 ─────────────────────────────────────
