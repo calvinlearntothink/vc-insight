@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv(override=True)
+
 import os
 import json
 import time
@@ -536,57 +539,69 @@ def main():
     seen = load_seen()
     fetcher = Fetcher()
     today = datetime.now().strftime("%Y-%m-%d")
+    mode = os.environ.get("AGENT_MODE", "all")
 
     # 1. 블로그 수집 및 분석
-    print("\n--- 블로그 수집 시작 ---")
-    new_blogs = fetch_new_blogs(seen, fetcher)
-    print(f"새 블로그 {len(new_blogs)}개 발견")
+    if mode in ("all", "blog"):
+        send_telegram("📰 *블로그 수집 중...* (약 3-5분 소요)")
+        print("\n--- 블로그 수집 시작 ---")
+        new_blogs = fetch_new_blogs(seen, fetcher)
+        print(f"새 블로그 {len(new_blogs)}개 발견")
 
-    for entry in new_blogs:
-        try:
-            print(f"분석 중: {entry['source']} — {entry['title'][:50]}")
-            analysis = analyze_blog(entry)
-            if analysis["importance"] in ("high", "medium"):
-                msg = format_blog_message(entry, analysis)
-                send_telegram(msg)
-            save_blog_to_notion(entry, analysis)
-            print(f"완료: {entry['title'][:50]} [{analysis['importance']}]")
-            time.sleep(2)
-        except Exception as e:
-            print(f"블로그 오류 ({entry['title'][:30]}): {e}")
+        if new_blogs:
+            send_telegram(f"🔍 새 블로그 *{len(new_blogs)}개* 발견. Claude 분석 시작...")
+
+        for i, entry in enumerate(new_blogs):
+            try:
+                print(f"분석 중: {entry['source']} — {entry['title'][:50]}")
+                analysis = analyze_blog(entry)
+                if analysis["importance"] in ("high", "medium"):
+                    msg = format_blog_message(entry, analysis)
+                    send_telegram(msg)
+                save_blog_to_notion(entry, analysis)
+                print(f"완료: {entry['title'][:50]} [{analysis['importance']}]")
+                time.sleep(2)
+            except Exception as e:
+                print(f"블로그 오류 ({entry['title'][:30]}): {e}")
+
+        if not new_blogs:
+            send_telegram("📰 새 블로그 없음")
 
     # 2. 트윗 수집
-    print("\n--- 트윗 수집 시작 ---")
-    all_tweets = []
-    for account in X_ACCOUNTS:
-        tweets = fetch_tweets(account, fetcher)
-        print(f"@{account['handle']}: {len(tweets)}개 트윗")
-        if tweets:
-            all_tweets.append({
-                "handle": account["handle"],
-                "name": account["name"],
-                "tweets": tweets,
-            })
-        time.sleep(2)
+    if mode in ("all", "tweets"):
+        send_telegram(f"🐦 *트윗 수집 중...* ({len(X_ACCOUNTS)}개 계정)")
+        print("\n--- 트윗 수집 시작 ---")
+        all_tweets = []
+        for i, account in enumerate(X_ACCOUNTS):
+            tweets = fetch_tweets(account, fetcher)
+            print(f"@{account['handle']}: {len(tweets)}개 트윗")
+            if tweets:
+                all_tweets.append({
+                    "handle": account["handle"],
+                    "name": account["name"],
+                    "tweets": tweets,
+                })
+            time.sleep(2)
 
-    # 3. 트윗 브리핑 분석
-    total_tweets = sum(len(a["tweets"]) for a in all_tweets)
-    print(f"\n총 {total_tweets}개 트윗 수집. 분석 시작...")
+        total_tweets = sum(len(a["tweets"]) for a in all_tweets)
+        print(f"\n총 {total_tweets}개 트윗 수집. 분석 시작...")
 
-    if total_tweets > 0:
-        try:
-            result = analyze_tweets(all_tweets)
-            if result and result.get("selected_tweets"):
-                msg = format_tweet_briefing(result)
-                send_telegram(msg)
-                save_tweet_briefing_to_notion(result, today)
-                print(f"브리핑 완료: {len(result['selected_tweets'])}개 선별")
-        except Exception as e:
-            print(f"트윗 브리핑 오류: {e}")
-    else:
-        print("오늘 새 트윗 없음")
+        if total_tweets > 0:
+            send_telegram(f"🤖 *Claude 분석 중...* 트윗 {total_tweets}개 → 상위 7-10개 선별")
+            try:
+                result = analyze_tweets(all_tweets)
+                if result and result.get("selected_tweets"):
+                    msg = format_tweet_briefing(result)
+                    send_telegram(msg)
+                    save_tweet_briefing_to_notion(result, today)
+                    print(f"브리핑 완료: {len(result['selected_tweets'])}개 선별")
+            except Exception as e:
+                print(f"트윗 브리핑 오류: {e}")
+        else:
+            send_telegram("🐦 오늘 새 트윗 없음")
 
     save_seen(seen)
+    send_telegram("✅ *완료!*")
     print(f"\n[{datetime.now()}] 완료")
 
 if __name__ == "__main__":
