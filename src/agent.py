@@ -494,14 +494,16 @@ def save_tweet_briefing_to_notion(result, date_str):
     notion = Client(auth=NOTION_API_KEY)
     # 중복 저장 방지
     existing = notion.databases.query(
-        database_id=NOTION_DATABASE_ID,
-        filter={
+    **{
+        "database_id": NOTION_DATABASE_ID,
+        "filter": {
             "and": [
                 {"property": "출처", "rich_text": {"equals": "X 브리핑"}},
                 {"property": "날짜", "date": {"equals": date_str}},
             ]
         }
-    )
+    }
+)
     if existing["results"]:
         print("오늘 X 브리핑 이미 저장됨, 스킵")
         return
