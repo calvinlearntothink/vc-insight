@@ -492,21 +492,6 @@ def save_blog_to_notion(entry, analysis):
 
 def save_tweet_briefing_to_notion(result, date_str):
     notion = Client(auth=NOTION_API_KEY)
-    # 중복 저장 방지
-    existing = notion.databases.query(
-        **{
-            "database_id": NOTION_DATABASE_ID,
-            "filter": {
-                "and": [
-                    {"property": "출처", "rich_text": {"equals": "X 브리핑"}},
-                    {"property": "날짜", "date": {"equals": date_str}},
-                ]
-            }
-        }
-    )
-    if existing["results"]:
-        print("오늘 X 브리핑 이미 저장됨, 스킵")
-        return
 
     # 읽기 좋은 텍스트로 변환
     lines = []
@@ -521,7 +506,7 @@ def save_tweet_briefing_to_notion(result, date_str):
         lines.append(f"⚡ {t.get('counter', '')}")
         lines.append(f"🔍 더 파볼 것: {t.get('further_reading', '')}")
         lines.append("━━━━━━━━━━━━")
-    content = "\n".join(lines)[:2000]
+    briefing_content = "\n".join(lines)[:1900]
 
     notion.pages.create(
         parent={"database_id": NOTION_DATABASE_ID},
@@ -530,7 +515,7 @@ def save_tweet_briefing_to_notion(result, date_str):
             "출처":      {"rich_text": [{"text": {"content": "X 브리핑"}}]},
             "중요도":    {"select": {"name": "🟡 참고용"}},
             "날짜":      {"date": {"start": date_str}},
-            "핵심 논지": {"rich_text": [{"text": {"content": content}}]},
+            "핵심 논지": {"rich_text": [{"text": {"content": briefing_content}}]},
             "처리 여부": {"checkbox": False},
         },
     )
@@ -594,11 +579,25 @@ def main():
             try:
                 result = analyze_tweets(all_tweets)
                 if result and result.get("selected_tweets"):
+                    selected = result["selected_tweets"]
+                    high = [t for t in selected if t.get("importance") == "high"]
+                    medium = [t for t in selected if t.get("importance") == "medium"]
+                    send_telegram(f"📊 분석 완료: 총 {len(selected)}개 선별 (🔴 {len(high)}개 / 🟡 {len(medium)}개)")
                     msg = format_tweet_briefing(result)
-                    send_telegram(msg)
+                    if msg.strip():
+                        send_telegram(msg)
                     save_tweet_briefing_to_notion(result, today)
-                    print(f"브리핑 완료: {len(result['selected_tweets'])}개 선별")
+                    print(f"브리핑 완료: {len(selected)}개 선별")
+                else:
+                    send_telegram("⚠️ 오늘 선별된 트윗이 없어요.")
             except Exception as e:
+                err = str(e)
+                if "usage limits" in err or "credit" in err.lower():
+                    send_telegram("❌ *Claude API 오류*: 크레딧 부족\nconsole.anthropic.com에서 충전해주세요.")
+                elif "database" in err.lower() or "notion" in err.lower():
+                    send_telegram(f"❌ *Notion 저장 오류*: {err[:200]}")
+                else:
+                    send_telegram(f"❌ *오류 발생*: {err[:200]}")
                 print(f"트윗 브리핑 오류: {e}")
         else:
             send_telegram("🐦 오늘 새 트윗 없음")
