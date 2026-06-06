@@ -2,3 +2,5 @@ anthropic
 feedparser
 notion-client
 requests
+python-dotenv
+scrapling
