@@ -4,3 +4,4 @@ notion-client
 requests
 python-dotenv
 scrapling
+curl_cffi
