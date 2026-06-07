@@ -8,14 +8,6 @@ import requests
 from datetime import datetime
 from notion_client import Client
 import requests
-from bs4 import BeautifulSoup
-
-class SimpleFetcher:
-    def get(self, url):
-        import requests
-        from bs4 import BeautifulSoup
-        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
-        return BeautifulSoup(r.text, "html.parser")
 
 
 
@@ -28,17 +20,12 @@ NOTION_DATABASE_ID = os.environ["NOTION_DATABASE_ID"]
 
 # ── 블로그 소스 ───────────────────────────────────────
 BLOG_SOURCES = [
-    {"name": "a16z Crypto",       "url": "https://a16zcrypto.com/posts/",                 "type": "scrape"},
-    {"name": "Paradigm",          "url": "https://www.paradigm.xyz/writing",              "type": "scrape"},
-    {"name": "Multicoin Capital", "url": "https://multicoin.capital/writing/",            "type": "scrape"},
-    {"name": "Pantera Capital",   "url": "https://panteracapital.com/blockchain-letter/", "type": "scrape"},
-    {"name": "Galaxy Digital",    "url": "https://www.galaxy.com/insights/",              "type": "scrape"},
-    {"name": "Spartan Group",     "url": "https://www.spartangroup.io/insights",          "type": "scrape"},
-    {"name": "Dragonfly",         "url": "https://medium.com/feed/dragonfly-research",    "type": "rss"},
-    {"name": "Arthur Hayes",      "url": "https://cryptohayes.substack.com/feed",         "type": "rss"},
-    {"name": "Messari",           "url": "https://messari.io/rss/news",                   "type": "rss"},
-    {"name": "The Block",         "url": "https://www.theblock.co/rss.xml",               "type": "rss"},
-    {"name": "Spartan Medium",    "url": "https://medium.com/feed/the-spartan-group",     "type": "rss"},
+    {"name": "Dragonfly",   "url": "https://medium.com/feed/dragonfly-research", "type": "rss"},
+    {"name": "Arthur Hayes","url": "https://cryptohayes.substack.com/feed",      "type": "rss"},
+    {"name": "Messari",     "url": "https://messari.io/rss/news",                "type": "rss"},
+    {"name": "The Block",   "url": "https://www.theblock.co/rss.xml",            "type": "rss"},
+    {"name": "Spartan Medium","url": "https://medium.com/feed/the-spartan-group","type": "rss"},
+    {"name": "Bankless",    "url": "https://banklesshq.com/feed",                "type": "rss"},
 ]
 
 # ── URL 필터 (공통 제외 키워드) ───────────────────────
@@ -137,7 +124,7 @@ def save_seen(seen):
 
 # ── 블로그 스크래핑 ───────────────────────────────────
 def scrape_blog_links(source, fetcher):
-    page = fetcher.get(source["url"])
+    # fetcher removed: (source["url"])
     from urllib.parse import urlparse
     base = urlparse(source["url"])
     links = []
@@ -164,7 +151,7 @@ def scrape_blog_links(source, fetcher):
 
 def scrape_blog_content(url, fetcher):
     try:
-        page = fetcher.get(url)
+        # fetcher removed: (url)
         return page.get_all_text()[:6000]
     except:
         return ""
@@ -181,7 +168,7 @@ def fetch_rss_links(source):
             links.append({"title": title, "link": link, "published": published})
     return links
 
-def fetch_new_blogs(seen, fetcher):
+def fetch_new_blogs(seen):
     new_entries = []
     for source in BLOG_SOURCES:
         try:
@@ -189,11 +176,11 @@ def fetch_new_blogs(seen, fetcher):
             if source_type == "rss":
                 links = fetch_rss_links(source)
             else:
-                links = scrape_blog_links(source, fetcher)
+                
             print(f"{source['name']} 블로그: {len(links)}개 링크")
             for item in links:
                 if item["link"] not in seen:
-                    content = scrape_blog_content(item["link"], fetcher)
+                    
                     if len(content) > 500:
                         new_entries.append({
                             "source": source["name"],
@@ -224,11 +211,11 @@ def is_retweet(item):
     retweet = item.css('.retweet-header')
     return len(retweet) > 0
 
-def fetch_tweets(account, fetcher):
+def fetch_tweets(account):
     """계정 트윗 수집 — 24시간 이내, 150자 이상, RT 제외"""
     tweets = []
     try:
-        page = fetcher.get(f"https://nitter.net/{account['handle']}")
+        # fetcher removed: (f"https://nitter.net/{account['handle']}")
         items = page.css('.timeline-item')
         # 첫 번째는 핀 트윗이라 스킵
         for item in items[1:]:
@@ -540,7 +527,7 @@ def main():
     if mode in ("all", "blog"):
         send_telegram("📰 *블로그 수집 중...* (약 3-5분 소요)")
         print("\n--- 블로그 수집 시작 ---")
-        new_blogs = fetch_new_blogs(seen, fetcher)
+        new_blogs = fetch_new_blogs(seen)
         print(f"새 블로그 {len(new_blogs)}개 발견")
 
         if new_blogs:
@@ -568,7 +555,7 @@ def main():
         print("\n--- 트윗 수집 시작 ---")
         all_tweets = []
         for i, account in enumerate(X_ACCOUNTS):
-            tweets = fetch_tweets(account, fetcher)
+            tweets = fetch_tweets(account)
             print(f"@{account['handle']}: {len(tweets)}개 트윗")
             if tweets:
                 all_tweets.append({
