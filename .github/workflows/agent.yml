@@ -2,8 +2,8 @@ name: VC Intel Agent
 
 on:
   schedule:
-    - cron: "0 0 * * *"   # 매일 UTC 00:00 = 한국 오전 9시
-  workflow_dispatch:        # 수동 실행 버튼도 활성화
+    - cron: "0 0 * * *"
+  workflow_dispatch:
 
 jobs:
   run-agent:
@@ -20,6 +20,9 @@ jobs:
 
       - name: 의존성 설치
         run: pip install -r requirements.txt
+
+      - name: Playwright 설치
+        run: playwright install chromium
 
       - name: seen_entries 캐시 복원
         uses: actions/cache@v4

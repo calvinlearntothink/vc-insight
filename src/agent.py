@@ -7,7 +7,17 @@ import anthropic
 import requests
 from datetime import datetime
 from notion_client import Client
-from scrapling import Fetcher
+import requests
+from bs4 import BeautifulSoup
+
+class SimpleFetcher:
+    def get(self, url):
+        import requests
+        from bs4 import BeautifulSoup
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+        return BeautifulSoup(r.text, "html.parser")
+
+
 
 # ── 환경 변수 ──────────────────────────────────────────
 CLAUDE_API_KEY     = os.environ["CLAUDE_API_KEY"]
@@ -522,7 +532,7 @@ def save_tweet_briefing_to_notion(result, date_str):
 def main():
     print(f"[{datetime.now()}] VC Intel Agent 시작")
     seen = load_seen()
-    fetcher = Fetcher()
+    
     today = datetime.now().strftime("%Y-%m-%d")
     mode = os.environ.get("AGENT_MODE", "all")
 

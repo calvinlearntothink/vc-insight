@@ -8,3 +8,5 @@ curl_cffi
 curl_cffi
 curl_cffi
 curl_cffi
+beautifulsoup4
+beautifulsoup4
