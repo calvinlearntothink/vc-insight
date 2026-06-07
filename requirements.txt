@@ -5,3 +5,4 @@ requests
 python-dotenv
 scrapling
 curl_cffi
+curl_cffi
