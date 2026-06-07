@@ -1,9 +1,3 @@
-sed -i '' '/^from dotenv/d;/^load_dotenv/d' src/agent.py
-head -3 src/agent.py
-git add src/agent.py
-git commit -m "fix: remove dotenv"
-git push origin main
-
 import os
 import json
 import time
