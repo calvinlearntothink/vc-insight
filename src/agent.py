@@ -176,11 +176,11 @@ def fetch_new_blogs(seen):
             if source_type == "rss":
                 links = fetch_rss_links(source)
             else:
-                
+                links = []
             print(f"{source['name']} 블로그: {len(links)}개 링크")
             for item in links:
                 if item["link"] not in seen:
-                    
+                    content = scrape_blog_content_simple(item["link"])
                     if len(content) > 500:
                         new_entries.append({
                             "source": source["name"],
@@ -195,6 +195,24 @@ def fetch_new_blogs(seen):
         except Exception as e:
             print(f"블로그 오류 ({source['name']}): {e}")
     return new_entries
+
+
+def scrape_blog_content_simple(url):
+    try:
+        import requests
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+        from html.parser import HTMLParser
+        class TextExtractor(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.text = []
+            def handle_data(self, data):
+                self.text.append(data)
+        p = TextExtractor()
+        p.feed(r.text)
+        return " ".join(p.text)[:6000]
+    except:
+        return ""
 
 # ── X 트윗 스크래핑 ───────────────────────────────────
 def is_recent(date_str):
