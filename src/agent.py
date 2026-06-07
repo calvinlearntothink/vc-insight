@@ -1,5 +1,5 @@
-from dotenv import load_dotenv
-load_dotenv(override=True)
+sed -i '' '1s/.*/import os/' src/agent.py
+sed -i '' '2s/.*//' src/agent.py
 
 import os
 import json
