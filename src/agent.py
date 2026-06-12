@@ -10,7 +10,7 @@ import anthropic
 import requests
 from datetime import datetime, timedelta
 from notion_client import Client
-import datetime
+from datetime import datetime, timedelta, timezone
 
 # ── 환경 변수 ──────────────────────────────────────────
 CLAUDE_API_KEY      = os.environ["CLAUDE_API_KEY"]
@@ -217,7 +217,7 @@ def fetch_tweets(account):
     if not instance:
         return []
     tweets = []
-    cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=24)
+    cutoff = datetime.datetime.now(timezone.utc) - timedelta(hours=24)
     try:
         feed = feedparser.parse(f"{instance}/{account['handle']}/rss")
         count = 0
@@ -230,7 +230,7 @@ def fetch_tweets(account):
             if len(text) < 100:
                 continue
             try:
-                pub = datetime.datetime(*entry.published_parsed[:6], tzinfo=datetime.timezone.utc)
+                pub = datetime.datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
                 if pub < cutoff:
                     continue
             except:
