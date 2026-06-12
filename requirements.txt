@@ -1,6 +1,6 @@
 anthropic
 feedparser
-notion-client
+notion-client==2.4.0
 requests
 python-dotenv
 scrapling
