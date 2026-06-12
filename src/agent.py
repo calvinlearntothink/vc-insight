@@ -217,7 +217,7 @@ def fetch_tweets(account):
     if not instance:
         return []
     tweets = []
-    cutoff = datetime.datetime.now(timezone.utc) - timedelta(hours=24)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     try:
         feed = feedparser.parse(f"{instance}/{account['handle']}/rss")
         count = 0
