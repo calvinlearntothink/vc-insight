@@ -33,11 +33,12 @@ jobs:
 
       - name: 에이전트 실행
         env:
-          CLAUDE_API_KEY:     ${{ secrets.CLAUDE_API_KEY }}
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
-          NOTION_API_KEY:     ${{ secrets.NOTION_API_KEY }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NARRATIVE_DATABASE_ID: ${{ secrets.NARRATIVE_DATABASE_ID }}
         run: python src/agent.py
 
       - name: seen_entries 저장
