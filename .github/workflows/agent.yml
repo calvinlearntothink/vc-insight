@@ -2,8 +2,15 @@ name: VC Intel Agent
 
 on:
   schedule:
-    - cron: "0 0 * * *"
+    - cron: "0 0 * * *"    # 매일 09:00 KST (daily)
+    - cron: "30 0 * * 1"   # 매주 월요일 09:30 KST (weekly)
+    - cron: "0 1 1 * *"    # 매월 1일 10:00 KST (monthly)
   workflow_dispatch:
+    inputs:
+      mode:
+        description: '실행 모드 (daily/weekly/monthly/all)'
+        required: false
+        default: 'all'
 
 jobs:
   run-agent:
@@ -31,15 +38,35 @@ jobs:
           key: seen-entries-${{ github.run_id }}
           restore-keys: seen-entries-
 
+      - name: 실행 모드 결정
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "AGENT_MODE=${{ github.event.inputs.mode }}" >> $GITHUB_ENV
+          elif [ "$(date -u +%H:%M)" = "00:30" ]; then
+            echo "AGENT_MODE=weekly" >> $GITHUB_ENV
+          elif [ "$(date -u +%d)" = "01" ] && [ "$(date -u +%H)" = "01" ]; then
+            echo "AGENT_MODE=monthly" >> $GITHUB_ENV
+          else
+            echo "AGENT_MODE=daily" >> $GITHUB_ENV
+          fi
+
       - name: 에이전트 실행
         env:
-          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          CLAUDE_API_KEY:        ${{ secrets.CLAUDE_API_KEY }}
+          TELEGRAM_BOT_TOKEN:    ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:      ${{ secrets.TELEGRAM_CHAT_ID }}
+          NOTION_API_KEY:        ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATABASE_ID:    ${{ secrets.NOTION_DATABASE_ID }}
           NARRATIVE_DATABASE_ID: ${{ secrets.NARRATIVE_DATABASE_ID }}
-        run: python src/agent.py
+        run: |
+          if [ "$AGENT_MODE" = "weekly" ]; then
+            python -c "import sys; sys.path.insert(0,'src'); from agent import run_weekly; run_weekly()"
+          elif [ "$AGENT_MODE" = "monthly" ]; then
+            python -c "import sys; sys.path.insert(0,'src'); from agent import run_monthly; run_monthly()"
+          else
+            python src/agent.py
+          fi
 
       - name: seen_entries 저장
         uses: actions/cache/save@v4
