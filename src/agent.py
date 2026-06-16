@@ -549,19 +549,18 @@ def save_blog_to_notion(entry, analysis):
     )
 
 def save_daily_briefing_to_notion(briefing_text, date_str):
-    """데일리 브리핑 텍스트를 Notion VC Intel DB에 저장"""
+    """데일리 브리핑 전체를 Notion 페이지 본문(children blocks)에 저장 — 길이 제한 없음"""
     notion = Client(auth=NOTION_API_KEY)
     title = f"데일리 브리핑 | {date_str}"
 
-    # 같은 날짜 이미 있으면 갱신
-    try:
-        existing = notion.databases.query(
-            database_id=NOTION_DATABASE_ID,
-            filter={"property": "제목", "title": {"equals": title}},
-            page_size=1,
-        ).get("results", [])
-    except Exception:
-        existing = []
+    # 2000자씩 잘라서 paragraph 블록 배열 생성
+    CHUNK = 1900
+    chunks = [briefing_text[i:i+CHUNK] for i in range(0, len(briefing_text), CHUNK)]
+    children = [
+        {"object": "block", "type": "paragraph",
+         "paragraph": {"rich_text": [{"type": "text", "text": {"content": chunk}}]}}
+        for chunk in chunks
+    ]
 
     props = {
         "제목":      {"title": [{"text": {"content": title}}]},
@@ -571,15 +570,35 @@ def save_daily_briefing_to_notion(briefing_text, date_str):
         "핵심 논지": {"rich_text": [{"text": {"content": briefing_text[:1900]}}]},
         "처리 여부": {"checkbox": False},
     }
+
+    try:
+        existing = notion.databases.query(
+            database_id=NOTION_DATABASE_ID,
+            filter={"property": "제목", "title": {"equals": title}},
+            page_size=1,
+        ).get("results", [])
+    except Exception:
+        existing = []
+
     if existing:
-        notion.pages.update(page_id=existing[0]["id"], properties=props)
-        print("데일리 브리핑 Notion 갱신 완료")
+        page_id = existing[0]["id"]
+        notion.pages.update(page_id=page_id, properties=props)
+        # 기존 블록 삭제 후 재작성
+        try:
+            old_blocks = notion.blocks.children.list(block_id=page_id).get("results", [])
+            for b in old_blocks:
+                notion.blocks.delete(block_id=b["id"])
+        except Exception:
+            pass
+        notion.blocks.children.append(block_id=page_id, children=children)
+        print(f"데일리 브리핑 Notion 갱신 완료 ({len(chunks)}블록)")
     else:
         notion.pages.create(
             parent={"database_id": NOTION_DATABASE_ID},
             properties=props,
+            children=children,
         )
-        print("데일리 브리핑 Notion 저장 완료")
+        print(f"데일리 브리핑 Notion 저장 완료 ({len(chunks)}블록)")
 
 def save_tweet_briefing_to_notion(result, date_str):
     """하위 호환성 유지"""
