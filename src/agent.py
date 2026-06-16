@@ -111,11 +111,45 @@ VC_PORTFOLIO = {
 
 SEEN_FILE = "seen_entries.json"
 
-# ── 소스 가중치 (클러스터링용) ─────────────────────────
+# ── 소스 신뢰도 가중치 (소스별 세분화) ─────────────────
 SOURCE_WEIGHTS = {
-    "blog":  3,
-    "tweet": 1,
+    # 최상위 VC/리서처 블로그 (thesis 수준)
+    "Paradigm":           5,
+    "Dragonfly":          5,
+    "Multicoin Capital":  5,
+    "Arthur Hayes":       4,
+    "Delphi Digital":     4,
+    "a16z Crypto":        4,
+    "Pantera Capital":    4,
+    "Galaxy Digital":     3,
+    "Blockworks Research":3,
+    "Spartan Medium":     3,
+    # 프로토콜 공식
+    "Hyperliquid":        4,
+    "Uniswap Blog":       4,
+    "Aave Blog":          4,
+    # 핵심 인물 트윗
+    "hosseeb":            3,
+    "VitalikButerin":     3,
+    "KyleSamani":         3,
+    "CryptoHayes":        3,
+    "RyanWatkins_":       2,
+    "Delphi_Digital":     2,
+    "StaniKulechov":      2,
+    # 기본값
+    "default_blog":       3,
+    "default_tweet":      1,
 }
+
+def get_source_weight(source: str) -> int:
+    """소스명으로 신뢰도 가중치 반환"""
+    for key, weight in SOURCE_WEIGHTS.items():
+        if key.lower() in source.lower():
+            return weight
+    # 트윗 계정인지 블로그인지 판별
+    if any(x in source.lower() for x in ["x 브리핑", "tweet", "트윗", "@"]):
+        return SOURCE_WEIGHTS["default_tweet"]
+    return SOURCE_WEIGHTS["default_blog"]
 
 # ── seen 관리 ─────────────────────────────────────────
 def load_seen():
@@ -281,13 +315,18 @@ JSON만 반환. 설명 없이 순수 JSON:
   "watch_next": "앞으로 뭘 봐야 하는지 — 다음 촉매나 리스크",
   "key_projects": "연관 핵심 프로젝트 2-3개",
   "sector_tags": ["DeFi","PerpDEX","Stablecoins","RWA","AI×Crypto","L1","L2","ZK·Privacy","Restaking","DePIN","Meme","기관·매크로","인프라"] 중 해당하는 것들,
-  "narrative_signal": {{
-    "narrative": "이 글이 강화/약화하는 내러티브 이름",
-    "direction": "강화 또는 약화",
-    "reason": "한 줄 근거"
-  }}
+  "sector_signals": [
+    {{
+      "sector": "DeFi/PerpDEX/Stablecoins/RWA/AI×Crypto/L1/L2/ZK·Privacy/Restaking/DePIN/Meme/기관·매크로/인프라 중 하나",
+      "direction": "강화 또는 약화",
+      "strength": 1~10 숫자 (이 글에서 해당 섹터 시그널 강도),
+      "reason": "한 줄 근거"
+    }}
+  ]
 }}
 """
+# sector_signals는 복수 가능 — 하나의 글이 여러 섹터에 시그널을 줄 수 있음
+# strength 기준: 1~3=약한 언급, 4~6=명확한 시그널, 7~9=강한 thesis, 10=패러다임 전환급
 
 # ══════════════════════════════════════════════════════
 # 프롬프트 — 데일리 브리핑 (트윗 + 블로그 통합)
@@ -562,12 +601,21 @@ def save_daily_briefing_to_notion(briefing_text, date_str):
         for chunk in chunks
     ]
 
+    # 압축 요약 — 위클리/먼슬리가 읽는 구조화된 스냅샷
+    summary_lines = []
+    for line in briefing_text.split("\n"):
+        if any(tag in line for tag in ["###", "배경:", "메커니즘:", "이해관계:", "영향:"]):
+            summary_lines.append(line.strip())
+        if len("\n".join(summary_lines)) > 800:
+            break
+    compact_summary = "\n".join(summary_lines)[:900]
+
     props = {
         "제목":      {"title": [{"text": {"content": title}}]},
         "출처":      {"rich_text": [{"text": {"content": "데일리 브리핑"}}]},
         "중요도":    {"select": {"name": "🔴 머스트리드"}},
         "날짜":      {"date": {"start": date_str}},
-        "핵심 논지": {"rich_text": [{"text": {"content": briefing_text[:1900]}}]},
+        "핵심 논지": {"rich_text": [{"text": {"content": compact_summary}}]},
         "처리 여부": {"checkbox": False},
     }
 
@@ -657,42 +705,34 @@ def save_tweet_briefing_to_notion(result, date_str):
 CLUSTERING_PROMPT = """
 당신은 크립토 내러티브 분석가입니다.
 
-아래는 지난 7일간 VC 블로그와 X(트위터)에서 수집된 내러티브 시그널 집계입니다.
-블로그/아티클 시그널은 가중치 3, 트윗 시그널은 가중치 1로 계산됐습니다.
+아래는 수집된 섹터별 마인드쉐어 데이터입니다.
+마인드쉐어 스코어 = 상대강도(40pt) + 방향일치도(30pt) + 모멘텀(30pt)으로 계산됩니다.
 
 {aggregated_data}
 
-판단 기준:
-- 가중치 합산 0~3: 노이즈 (제외)
-- 4~6: Watchlist
-- 7~10: 주목
-- 11+: Rising (강화 우세) or Cooling (약화 우세)
-- 복수 소스(블로그+트윗 혼합)일수록 신뢰도 높음
-
-각 내러티브에 대해 JSON으로만 반환하세요. 설명 없이 순수 JSON만.
+각 섹터에 대해 JSON으로만 반환하세요. 설명 없이 순수 JSON만.
 
 {{
   "date": "{date}",
   "narratives": [
     {{
-      "narrative": "내러티브 이름",
+      "narrative": "섹터 이름",
       "status": "Rising / Cooling / Watchlist",
-      "score": 가중치 합산 점수(숫자),
+      "score": 마인드쉐어 스코어(0-100 숫자),
       "signal_count": 시그널 총 개수(숫자),
-      "blog_count": 블로그 시그널 수(숫자),
-      "tweet_count": 트윗 시그널 수(숫자),
       "direction": "강화 / 약화 / 혼재",
       "sources": ["출처 목록"],
-      "calvin_signal": "이 내러티브가 왜 지금 강화/약화되는지 한 단락 분석. 기술·경제·시장 역학 관점.",
+      "calvin_signal": "왜 지금 이 섹터에 attention이 쏠리는지 — 메커니즘, 이해관계, 시장 역학 한 단락",
       "next_catalyst": "다음에 확인해야 할 촉매 또는 리스크 한 줄",
-      "sector": "DeFi/PerpDEX/Stablecoins/RWA/AI×Crypto/L1/L2/ZK·Privacy/Restaking/DePIN/Meme/기관·매크로/인프라 중 하나",
-      "key_projects": "이 내러티브 대표 프로젝트 2-3개"
+      "sector": "섹터 이름 (narrative와 동일)",
+      "key_projects": "이 섹터 대표 프로젝트 2-3개",
+      "trend_vs_30d": "7일 대비 30일 트렌드 — 상승/하락/유지"
     }}
   ],
-  "week_summary": "이번 주 전체를 한 줄로 요약"
+  "week_summary": "이번 주 전체 크립토 시장 한 줄 요약"
 }}
 
-score 3 이하 내러티브는 제외. score 높은 순으로 정렬.
+score 20 이하 섹터는 제외. score 높은 순으로 정렬.
 """
 
 def fetch_recent_signals(days=7):
@@ -722,88 +762,201 @@ def fetch_recent_signals(days=7):
     print(f"지난 {days}일 시그널 {len(results)}개 가져옴")
     return results
 
-def parse_signals(pages):
-    """각 페이지의 핵심 논지에서 narrative_signal 파싱 + 가중치 적용"""
+NOISE_KEYWORDS = ["접근 불가", "분석 불가", "판단 불가", "확인 필요", "불가능", "알 수 없", "분석 불가능"]
+VALID_SECTORS = {"DeFi","PerpDEX","Stablecoins","RWA","AI×Crypto","L1","L2","ZK·Privacy","Restaking","DePIN","Meme","기관·매크로","인프라"}
+
+def parse_signals(pages, timeframe_days=7):
+    """
+    sector_signals (복수) 파싱 + 소스 신뢰도 가중치 + 날짜 감쇠
+    timeframe_days: 7(단기) / 30(중기) / 180(장기)
+    """
     signals = []
+    today = datetime.now().date()
+
     for page in pages:
         props = page.get("properties", {})
 
-        # 출처 확인
+        # 출처
         source = ""
-        source_prop = props.get("출처", {})
-        if source_prop.get("rich_text"):
-            source = source_prop["rich_text"][0].get("plain_text", "")
+        sp = props.get("출처", {})
+        if sp.get("rich_text"):
+            source = sp["rich_text"][0].get("plain_text", "")
 
-        # 소스 타입 + 가중치
-        if any(x in source.lower() for x in ["x 브리핑", "tweet", "트윗"]):
-            weight = SOURCE_WEIGHTS["tweet"]
-            source_type = "tweet"
-        else:
-            weight = SOURCE_WEIGHTS["blog"]
-            source_type = "blog"
-
-        # 핵심 논지에서 narrative_signal 파싱
-        key_prop = props.get("핵심 논지", {})
-        content = ""
-        if key_prop.get("rich_text"):
-            content = key_prop["rich_text"][0].get("plain_text", "")
-
-        # "내러티브: XXX | 방향: 강화/약화 | 근거: YYY" 형식 파싱
-        if "내러티브:" in content and "방향:" in content:
+        # 날짜 → 감쇠 계수 (타임프레임에 따라 다르게)
+        date_str = props.get("날짜", {}).get("date", {}).get("start", "")
+        days_ago = 0
+        if date_str:
             try:
-                narrative_part = content.split("내러티브:")[1].split("|")[0].strip()
-                direction_part = content.split("방향:")[1].split("|")[0].strip()
-                reason_part = content.split("근거:")[1].strip() if "근거:" in content else ""
+                page_date = datetime.strptime(date_str[:10], "%Y-%m-%d").date()
+                days_ago = (today - page_date).days
+            except:
+                pass
 
-                # 접근불가/분석불가 노이즈 제거
-                NOISE_KEYWORDS = ["접근 불가", "분석 불가", "판단 불가", "확인 필요", "불가능", "알 수 없"]
+        # 타임프레임별 감쇠
+        if timeframe_days <= 7:
+            if days_ago == 0:   decay = 1.0
+            elif days_ago <= 2: decay = 0.7
+            elif days_ago <= 5: decay = 0.4
+            else:               decay = 0.2
+        elif timeframe_days <= 30:
+            if days_ago <= 3:   decay = 1.0
+            elif days_ago <= 7: decay = 0.8
+            elif days_ago <= 14:decay = 0.6
+            elif days_ago <= 21:decay = 0.4
+            else:               decay = 0.2
+        else:  # 180일
+            decay = max(0.1, 1.0 - (days_ago / timeframe_days))
+
+        # 소스 신뢰도 가중치
+        base_weight = get_source_weight(source)
+
+        # 핵심 논지에서 sector_signals 또는 narrative_signal 파싱
+        key_prop = props.get("핵심 논지", {})
+        content_text = ""
+        if key_prop.get("rich_text"):
+            content_text = key_prop["rich_text"][0].get("plain_text", "")
+
+        # 새 포맷: sector_signals JSON 파싱 시도
+        parsed_sector_signals = []
+        if '"sector_signals"' in content_text or "'sector_signals'" in content_text:
+            try:
+                import re as _re, json as _json
+                # sector_signals 배열 추출
+                ss = []
+                if '"sector_signals"' in content_text:
+                    try:
+                        start = content_text.index('"sector_signals"') + len('"sector_signals"')
+                        bracket_start = content_text.index('[', start)
+                        depth = 0
+                        for ci, ch in enumerate(content_text[bracket_start:]):
+                            if ch == '[': depth += 1
+                            elif ch == ']': 
+                                depth -= 1
+                                if depth == 0:
+                                    ss = _json.loads(content_text[bracket_start:bracket_start+ci+1])
+                                    break
+                    except Exception:
+                        ss = []
+                if ss:
+                    for s in ss:
+                        sector = s.get("sector","")
+                        direction = s.get("direction","")
+                        strength = float(s.get("strength", 5))
+                        reason = s.get("reason","")
+                        if sector in VALID_SECTORS and direction and not any(n in sector for n in NOISE_KEYWORDS):
+                            parsed_sector_signals.append({
+                                "source": source,
+                                "sector": sector,
+                                "direction": direction,
+                                "strength": strength,
+                                "reason": reason,
+                                "weight": base_weight * decay,
+                                "days_ago": days_ago,
+                            })
+            except Exception as e:
+                pass
+
+        # 구포맷 폴백: "내러티브: XXX | 방향: 강화" 파싱
+        if not parsed_sector_signals and "내러티브:" in content_text and "방향:" in content_text:
+            try:
+                narrative_part = content_text.split("내러티브:")[1].split("|")[0].strip()
+                direction_part = content_text.split("방향:")[1].split("|")[0].strip()
+                reason_part = content_text.split("근거:")[1].strip() if "근거:" in content_text else ""
                 is_noise = any(kw in narrative_part for kw in NOISE_KEYWORDS)
                 if narrative_part and direction_part and not is_noise:
-                    signals.append({
+                    # 내러티브명을 섹터로 매핑 시도
+                    matched_sector = None
+                    for sv in VALID_SECTORS:
+                        if sv.lower() in narrative_part.lower() or narrative_part.lower() in sv.lower():
+                            matched_sector = sv
+                            break
+                    parsed_sector_signals.append({
                         "source": source,
-                        "source_type": source_type,
-                        "weight": weight,
-                        "narrative": narrative_part,
+                        "sector": matched_sector or narrative_part[:50],
                         "direction": direction_part,
+                        "strength": 5.0,  # 기본 강도
                         "reason": reason_part,
+                        "weight": base_weight * decay,
+                        "days_ago": days_ago,
                     })
             except Exception as e:
-                print(f"시그널 파싱 오류: {e}")
+                pass
 
-    print(f"파싱된 시그널: {len(signals)}개")
+        signals.extend(parsed_sector_signals)
+
+    print(f"파싱된 시그널: {len(signals)}개 (타임프레임: {timeframe_days}일)")
     return signals
 
 def aggregate_signals(signals):
-    """내러티브별 집계 + 가중치 합산"""
-    narrative_map = {}
+    """섹터별 집계 — 상대강도 + 방향일치도 + 모멘텀 스코어 (0-100)"""
+    sector_map = {}
     for sig in signals:
-        name = sig["narrative"]
+        name = sig.get("sector") or sig.get("narrative", "")
         if not name:
             continue
-        if name not in narrative_map:
-            narrative_map[name] = {
-                "narrative": name,
-                "total_score": 0,
-                "signal_count": 0,
-                "direction_counts": {"강화": 0, "약화": 0, "유지": 0},
+        if not name:
+            continue
+        if name not in sector_map:
+            sector_map[name] = {
+                "sector": name,
+                "weighted_scores": [],      # (weight, strength, direction, days_ago) 튜플
+                "direction_weighted": {"강화": 0.0, "약화": 0.0},
                 "sources": [],
                 "reasons": [],
-                "blog_count": 0,
-                "tweet_count": 0,
+                "signal_count": 0,
             }
-        entry = narrative_map[name]
-        entry["total_score"] += sig["weight"]
+        entry = sector_map[name]
+        w = sig.get("weight", 1.0)
+        st = sig.get("strength", 5.0)
+        direction = sig.get("direction", "")
+        days_ago = sig.get("days_ago", 0)
+        entry["weighted_scores"].append((w, st, direction, days_ago))
+        entry["sources"].append(sig.get("source",""))
+        entry["reasons"].append(sig.get("reason",""))
         entry["signal_count"] += 1
-        entry["sources"].append(sig["source"])
-        entry["reasons"].append(sig["reason"])
-        direction = sig["direction"]
-        if direction in entry["direction_counts"]:
-            entry["direction_counts"][direction] += sig["weight"]
-        if sig["source_type"] == "blog":
-            entry["blog_count"] += 1
+        if direction in entry["direction_weighted"]:
+            entry["direction_weighted"][direction] += w * st
+
+    # 스코어 계산: 상대강도(40) + 방향일치도(30) + 모멘텀(30)
+    all_raw = []
+    for name, data in sector_map.items():
+        scores = data["weighted_scores"]
+        if not scores:
+            continue
+        # 상대강도: 가중 평균 strength × 소스 신뢰도
+        raw_strength = sum(w * st for w, st, d, _ in scores) / max(1, sum(w for w, _, _, _ in scores))
+        data["raw_strength"] = raw_strength
+        all_raw.append(raw_strength)
+
+    max_raw = max(all_raw) if all_raw else 1
+    for name, data in sector_map.items():
+        scores = data["weighted_scores"]
+        if not scores:
+            continue
+        # ① 상대강도 (40점): 전체 섹터 중 상대적 위치
+        rel_strength = (data["raw_strength"] / max_raw) * 40
+
+        # ② 방향일치도 (30점): 같은 방향 시그널 비율
+        total_dir = sum(data["direction_weighted"].values())
+        if total_dir > 0:
+            max_dir = max(data["direction_weighted"].values())
+            alignment = (max_dir / total_dir) * 30
         else:
-            entry["tweet_count"] += 1
-    return narrative_map
+            alignment = 15
+
+        # ③ 모멘텀 (30점): 최근 3일 vs 이전 시그널 비중
+        recent = sum(w * st for w, st, d, da in scores if da <= 3)
+        older  = sum(w * st for w, st, d, da in scores if da > 3)
+        if recent + older > 0:
+            momentum = (recent / (recent + older)) * 30
+        else:
+            momentum = 15
+
+        data["mindshare_score"] = round(rel_strength + alignment + momentum, 1)
+        data["dominant_direction"] = "강화" if data["direction_weighted"]["강화"] >= data["direction_weighted"]["약화"] else "약화"
+        data["total_score"] = data["raw_strength"]  # 하위 호환
+
+    return sector_map
 
 def claude_cluster(narrative_map):
     """Claude로 내러티브 클러스터링 판단"""
@@ -812,18 +965,23 @@ def claude_cluster(narrative_map):
 
     aggregated_text = ""
     for name, data in sorted(
-        narrative_map.items(),
-        key=lambda x: x[1]["total_score"],
+        sector_map.items(),
+        key=lambda x: x[1].get("mindshare_score", x[1].get("total_score", 0)),
         reverse=True
     ):
-        if data["total_score"] <= 3:
+        if data.get("mindshare_score", data.get("total_score", 0)) < 20:
             continue
+        mindshare = data.get("mindshare_score", 0)
+        direction = data.get("dominant_direction", "혼재")
+        trend = data.get("trend", "유지")
+        score_30d = data.get("score_30d", 0)
         aggregated_text += f"""
-내러티브: {name}
-가중치 합산: {data['total_score']} (블로그 {data['blog_count']}개×3 + 트윗 {data['tweet_count']}개×1)
+섹터: {name}
+마인드쉐어 스코어: {mindshare}/100 (7D 기준)
+30D 스코어: {score_30d}/100 → 트렌드: {trend}
 시그널 수: {data['signal_count']}개
-방향: 강화 {data['direction_counts']['강화']} / 약화 {data['direction_counts']['약화']} / 유지 {data['direction_counts'].get('유지', 0)}
-출처: {', '.join(set(data['sources']))}
+방향: {direction} (강화 {round(data['direction_weighted'].get('강화',0),1)} / 약화 {round(data['direction_weighted'].get('약화',0),1)})
+주요 소스: {', '.join(list(set(data['sources']))[:5])}
 근거 요약: {' | '.join(data['reasons'][:3])}
 ---"""
 
@@ -1216,21 +1374,40 @@ def run_monthly_briefing():
     print("--- 먼슬리 브리핑 완료 ---\n")
 
 def run_narrative_clustering():
-    """내러티브 클러스터링 전체 실행"""
+    """내러티브 클러스터링 전체 실행 — 7D/30D/6M 타임프레임"""
     print("\n--- 내러티브 클러스터링 시작 ---")
-    pages   = fetch_recent_signals(days=7)
-    if not pages:
+
+    # 7일 (단기 트렌드)
+    pages_7d = fetch_recent_signals(days=7)
+    if not pages_7d:
         print("시그널 없음")
         return
-    signals = parse_signals(pages)
+    signals_7d = parse_signals(pages_7d, timeframe_days=7)
+
+    # 30일 (중기 흐름) — 데이터 있으면
+    pages_30d = fetch_recent_signals(days=30)
+    signals_30d = parse_signals(pages_30d, timeframe_days=30) if pages_30d else []
+
+    # 7일 기준으로 클러스터링 (메인)
+    signals = signals_7d
     if not signals:
         print("파싱된 시그널 없음")
         return
-    narrative_map = aggregate_signals(signals)
-    print(f"집계된 내러티브: {len(narrative_map)}개")
-    for name, data in sorted(narrative_map.items(), key=lambda x: x[1]["total_score"], reverse=True):
-        print(f"  {name}: 점수 {data['total_score']} (시그널 {data['signal_count']}개)")
-    cluster_result = claude_cluster(narrative_map)
+    sector_map = aggregate_signals(signals)
+
+    # 30일 모멘텀 보조 정보 추가
+    if signals_30d:
+        sector_map_30d = aggregate_signals(signals_30d)
+        for name, data in sector_map.items():
+            data_30d = sector_map_30d.get(name, {})
+            data["score_30d"] = data_30d.get("mindshare_score", 0)
+            data["trend"] = "상승" if data.get("mindshare_score",0) > data.get("score_30d",0) else "하락"
+
+    narrative_map = sector_map  # 하위 호환
+    print(f"집계된 섹터: {len(sector_map)}개")
+    for name, data in sorted(sector_map.items(), key=lambda x: x[1].get("mindshare_score",0), reverse=True):
+        print(f"  {name}: 마인드쉐어 {data.get('mindshare_score',0)} (시그널 {data['signal_count']}개, 방향: {data.get('dominant_direction','')})")
+    cluster_result = claude_cluster(sector_map)
     if not cluster_result:
         print("클러스터링 실패")
         return
