@@ -8,7 +8,6 @@ import re
 import feedparser
 import anthropic
 import requests
-from datetime import datetime, timedelta
 from notion_client import Client
 from datetime import datetime, timedelta, timezone
 
@@ -21,18 +20,24 @@ NOTION_DATABASE_ID  = os.environ["NOTION_DATABASE_ID"]       # VC Intel DB
 NARRATIVE_DB_ID     = os.environ.get("NARRATIVE_DATABASE_ID", "")  # Narrative Radar DB
 
 # ── 블로그 소스 ───────────────────────────────────────
+# ── 소스 기준: 메커니즘/이해관계 분석하는 것만. 미디어/마케팅 제외 ──
 BLOG_SOURCES = [
-    {"name": "a16z Crypto",       "url": "https://a16zcrypto.com/posts/",                 "type": "scrape"},
-    {"name": "Paradigm",          "url": "https://www.paradigm.xyz/writing",              "type": "scrape"},
-    {"name": "Multicoin Capital", "url": "https://multicoin.capital/writing/",            "type": "scrape"},
-    {"name": "Pantera Capital",   "url": "https://panteracapital.com/blockchain-letter/", "type": "scrape"},
-    {"name": "Galaxy Digital",    "url": "https://www.galaxy.com/insights/",              "type": "scrape"},
-    {"name": "Spartan Group",     "url": "https://www.spartangroup.io/insights",          "type": "scrape"},
-    {"name": "Dragonfly",         "url": "https://medium.com/feed/dragonfly-research",    "type": "rss"},
-    {"name": "Arthur Hayes",      "url": "https://cryptohayes.substack.com/feed",         "type": "rss"},
-    {"name": "Messari",           "url": "https://messari.io/rss/news",                   "type": "rss"},
-    {"name": "The Block",         "url": "https://www.theblock.co/rss.xml",               "type": "rss"},
-    {"name": "Spartan Medium",    "url": "https://medium.com/feed/the-spartan-group",     "type": "rss"},
+    # VC/리서처 블로그 (RSS)
+    {"name": "Dragonfly",         "url": "https://medium.com/feed/dragonfly-research",         "type": "rss"},
+    {"name": "Arthur Hayes",      "url": "https://cryptohayes.substack.com/feed",              "type": "rss"},
+    {"name": "Spartan Medium",    "url": "https://medium.com/feed/the-spartan-group",           "type": "rss"},
+    {"name": "Delphi Digital",    "url": "https://members.delphidigital.io/feed",               "type": "rss"},
+    {"name": "Blockworks Research","url": "https://blockworks.co/feed",                         "type": "rss"},
+    # 프로토콜 공식 (메커니즘 직접 설명)
+    {"name": "Uniswap Blog",      "url": "https://blog.uniswap.org/rss.xml",                   "type": "rss"},
+    {"name": "Aave Blog",         "url": "https://medium.com/feed/aave",                       "type": "rss"},
+    {"name": "Hyperliquid",       "url": "https://hyperliquid.substack.com/feed",              "type": "rss"},
+    # VC 스크래핑 (RSS 없는 곳)
+    {"name": "a16z Crypto",       "url": "https://a16zcrypto.com/posts/",                      "type": "scrape"},
+    {"name": "Paradigm",          "url": "https://www.paradigm.xyz/writing",                   "type": "scrape"},
+    {"name": "Multicoin Capital", "url": "https://multicoin.capital/writing/",                 "type": "scrape"},
+    {"name": "Pantera Capital",   "url": "https://panteracapital.com/blockchain-letter/",      "type": "scrape"},
+    {"name": "Galaxy Digital",    "url": "https://www.galaxy.com/insights/",                   "type": "scrape"},
 ]
 
 URL_EXCLUDE_KEYWORDS = [
@@ -230,7 +235,7 @@ def fetch_tweets(account):
             if len(text) < 100:
                 continue
             try:
-                pub = datetime.datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+                pub = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
                 if pub < cutoff:
                     continue
             except:
@@ -244,11 +249,15 @@ def fetch_tweets(account):
     return tweets
 
 # ── 프롬프트 ──────────────────────────────────────────
+# ══════════════════════════════════════════════════════
+# 프롬프트 — 블로그/아티클 분석
+# ══════════════════════════════════════════════════════
 BLOG_ANALYSIS_PROMPT = """
-당신은 글로벌 Crypto/Web3 시장 인텔리전스 에이전트입니다.
-사용자의 목적: 나만의 시장 Thesis와 논리를 만드는 것. DeFi, Stablecoin, RWA, Payment, Vault, Tokenomics, Market Making, Backer/Investment 섹터 집중.
+당신은 크립토/DeFi 시장 시니어 애널리스트입니다.
+독자는 DeFi를 깊이 이해하는 전문가입니다.
 
-아래 블로그 글을 분석하고 JSON으로만 반환하세요. 설명 없이 순수 JSON만.
+표면적 사실 요약 절대 금지.
+반드시 뒤에서 무슨 일이 벌어지는지, 누가 이득/손해인지, 다음에 어떤 영향이 오는지까지 분석합니다.
 
 [출처] {source}
 [VC 컨텍스트] {portfolio}
@@ -256,23 +265,22 @@ BLOG_ANALYSIS_PROMPT = """
 [내용] {content}
 
 중요도 판단 기준:
-- high: 관심 섹터 직접 다룸 + 새로운 시각/프레임워크 + 내러티브 전환 신호 + VC thesis 직접 설명
-- medium: 관심 섹터 관련이지만 현황 정리 수준 + 매크로 분석
-- low: 관심 섹터 무관 + 단순 공지/채용/이벤트
+- high: 메커니즘/이해관계 분석 포함 + 새로운 프레임워크 + 내러티브 전환 신호
+- medium: 관련 섹터 다루지만 현황 정리 수준
+- low: 단순 공지/채용/이벤트/마케팅
 
-반환할 JSON:
+JSON만 반환. 설명 없이 순수 JSON:
 {{
   "importance": "high 또는 medium 또는 low",
-  "summary": "핵심 논지 3줄 요약",
-  "vc_intent": "왜 지금 이걸 썼는지, 포트폴리오 연결고리",
-  "context": "관련 이전 사례와 시장 맥락",
-  "must_know": "모르면 안 되는 용어/개념",
-  "related_projects": "연관 프로젝트 리스트",
-  "counter_argument": "이 논지의 약점과 반대 포지션",
-  "data_check": "수치로 뒷받침되는 데이터 근거",
-  "further_reading": "더 파볼 리포트/소스 + 왜 파봐야 하는지",
-  "call_questions": "이 주제로 쓸 수 있는 질문 2-3개",
-  "sector_tags": ["Stablecoins","RWA","AI×Crypto","DePIN","Perps","ZK/Infra","L1·L2","기타"] 중 해당하는 것들,
+  "background": "왜 지금 이 글이 나왔는지 맥락 (시장 상황, VC 포지션)",
+  "what": "구체적으로 무슨 일/주장인지",
+  "mechanism": "실제로 어떻게 작동하는지 — 기술/경제 메커니즘",
+  "interests": "누가 이득이고 누가 손해인지 — 이해관계 구조",
+  "impact": "다음에 어떤 영향이 오는지 — 단기/중기",
+  "counter": "이 논지의 약점과 반대 포지션",
+  "watch_next": "앞으로 뭘 봐야 하는지 — 다음 촉매나 리스크",
+  "key_projects": "연관 핵심 프로젝트 2-3개",
+  "sector_tags": ["DeFi","PerpDEX","Stablecoins","RWA","AI×Crypto","L1","L2","ZK·Privacy","Restaking","DePIN","Meme","기관·매크로","인프라"] 중 해당하는 것들,
   "narrative_signal": {{
     "narrative": "이 글이 강화/약화하는 내러티브 이름",
     "direction": "강화 또는 약화",
@@ -281,42 +289,66 @@ BLOG_ANALYSIS_PROMPT = """
 }}
 """
 
-TWEET_BRIEFING_PROMPT = """
-당신은 글로벌 Crypto/Web3 시장 인텔리전스 에이전트입니다.
-사용자의 목적: 나만의 시장 Thesis와 논리를 만드는 것.
-관심 섹터: DeFi, Stablecoin, RWA, Payment, Vault, Tokenomics, Market Making, Backer/Investment
+# ══════════════════════════════════════════════════════
+# 프롬프트 — 데일리 브리핑 (트윗 + 블로그 통합)
+# ══════════════════════════════════════════════════════
+DAILY_BRIEFING_PROMPT = """
+당신은 크립토/DeFi 시장 시니어 애널리스트입니다.
+독자는 DeFi를 깊이 이해하는 전문가입니다.
 
-아래는 오늘 수집한 Crypto/Web3 주요 인물들의 트윗 모음입니다.
+역할:
+- 오늘 크립토/DeFi에서 진짜 중요한 일을 판단하고 깊이 해석합니다
+- 단순 요약 절대 금지. 표면 말고 뒤에서 무슨 일이 벌어지는지까지 분석합니다
+- 메커니즘(어떻게 작동하는지), 이해관계(누가 이득/손해), 영향(다음에 뭐가 바뀌는지) 반드시 포함
+- 노이즈는 마지막에 한 줄로만 처리합니다
+- 한국어로 작성합니다
 
-{tweets_data}
+판단 기준:
+- 여러 소스가 동시에 언급 → 중요 시그널
+- 프로토콜 창립자/공식 업데이트 → 높은 우선순위
+- 새로운 메커니즘/이해관계 구조 포함 → 높은 우선순위
+- 단순 가격 예측, 마케팅성 → 제외
 
-다음을 수행하세요:
-1. 관심 섹터 관련성, 새로운 시각, 시장 신호 여부 기준으로 상위 7-10개 트윗 선별
-2. 선별된 것들을 아래 JSON 형식으로 반환
+링크 규칙:
+- 각 이슈 하단에 실제 URL만 2~3개 붙입니다
+- 없는 URL 절대 만들지 않습니다
 
-JSON만 반환. 설명 없이:
-{{
-  "selected_tweets": [
-    {{
-      "handle": "트위터 핸들",
-      "name": "이름",
-      "importance": "high 또는 medium",
-      "content": "트윗 원문 (전체)",
-      "link": "트윗 링크",
-      "summary": "핵심 요약 2줄",
-      "why_matters": "왜 지금 이 말을 하는가 (VC 포지션/포트폴리오 연결)",
-      "counter": "반대 시각",
-      "further_reading": "더 파볼 것 + 왜 파봐야 하는지",
-      "sector_tags": ["해당 섹터들"],
-      "narrative_signal": {{
-        "narrative": "이 트윗이 강화/약화하는 내러티브 이름",
-        "direction": "강화 또는 약화",
-        "reason": "한 줄 근거"
-      }}
-    }}
-  ]
-}}
+오늘 수집된 데이터:
+{raw_data}
+
+출력 형식 (반드시 이 형식):
+---
+📌 크립토 데일리 브리핑 | {{날짜}}
+
+🔥 오늘의 핵심 이슈
+
+① [이슈 제목]
+배경: [왜 지금 이 이슈가 나왔는지]
+내용: [구체적으로 무슨 일인지]
+메커니즘: [실제로 어떻게 작동하는지]
+이해관계: [누가 이득이고 누가 손해인지]
+영향: [다음에 어떤 일이 생기는지]
+🔍 더 보기: [URL]
+
+(중요한 이슈 전부, 개수 제한 없음)
+
+🧭 앞으로 뭘 봐야 하나
+- [다음 관전 포인트]
+- [확인해야 할 촉매/리스크]
+- [과거 유사 사례 있으면 언제, 어떤 결과였는지]
+
+⚖️ 규제 레이더 (규제 이슈 있을 때만)
+• [어느 기관/국가, 무슨 움직임, 단기/장기 영향]
+
+⚡ 빠르게 체크
+• [알아두면 좋은 것 5개 이내]
+
+🚫 오늘 무시해도 될 것
+• [노이즈 + 이유 한 줄]
+---
 """
+
+TWEET_BRIEFING_PROMPT = DAILY_BRIEFING_PROMPT  # 하위 호환성 유지
 
 # ── Claude 분석 ───────────────────────────────────────
 def analyze_blog(entry):
@@ -329,7 +361,7 @@ def analyze_blog(entry):
         content=entry["content"],
     )
     message = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         max_tokens=8000,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -337,38 +369,54 @@ def analyze_blog(entry):
     raw = raw.replace("```json", "").replace("```", "").strip()
     return json.loads(raw)
 
-def analyze_tweets(all_tweets):
+def generate_daily_briefing(all_tweets, blog_analyses):
+    """트윗 + 블로그 분석 결과를 통합해서 데일리 브리핑 생성"""
     client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
-    tweets_data = ""
+    today = datetime.now().strftime("%Y.%m.%d")
+    url_list = []
+
+    raw_data = f"=== 블로그/아티클 분석 ({len(blog_analyses)}개) ===\n"
+    for entry, analysis in blog_analyses:
+        if analysis.get("importance") == "low":
+            continue
+        raw_data += f"\n[{entry['source']} | {entry['title']}]\n"
+        raw_data += f"배경: {analysis.get('background', '')}\n"
+        raw_data += f"메커니즘: {analysis.get('mechanism', '')}\n"
+        raw_data += f"이해관계: {analysis.get('interests', '')}\n"
+        raw_data += f"영향: {analysis.get('impact', '')}\n"
+        raw_data += f"섹터: {', '.join(analysis.get('sector_tags', []))}\n"
+        if entry.get("link"):
+            url_list.append(f"[{entry['source']}] {entry['link']}")
+
+    raw_data += f"\n=== 트윗 수집 ({sum(len(a['tweets']) for a in all_tweets)}개) ===\n"
     for account_data in all_tweets:
         if not account_data["tweets"]:
             continue
-        tweets_data += f"\n=== @{account_data['handle']} ({account_data['name']}) ===\n"
-        tweets_data += f"컨텍스트: {VC_PORTFOLIO.get(account_data['name'], '정보 없음')}\n"
+        ctx = VC_PORTFOLIO.get(account_data["name"], "")
+        raw_data += f"\n[@{account_data['handle']} | {ctx}]\n"
         for t in account_data["tweets"]:
-            tweets_data += f"- [{t['date']}] {t['content']}\n  링크: {t['link']}\n"
+            raw_data += f"  - {t['content']}\n"
+            if t.get("link"):
+                url_list.append(f"[@{account_data['handle']}] {t['link']}")
 
-    if not tweets_data.strip():
+    if url_list:
+        raw_data += "\n=== 수집된 URL (이것만 사용) ===\n"
+        raw_data += "\n".join(url_list)
+
+    if not raw_data.strip():
         return None
 
-    prompt = TWEET_BRIEFING_PROMPT.format(tweets_data=tweets_data)
+    prompt = DAILY_BRIEFING_PROMPT.format(raw_data=raw_data, 날짜=today)
     message = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         max_tokens=8000,
         messages=[{"role": "user", "content": prompt}],
     )
-    raw = message.content[0].text.strip()
-    raw = raw.replace("```json", "").replace("```", "").strip()
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        try:
-            if not raw.endswith("]}"):
-                raw = raw + "]}"
-            return json.loads(raw)
-        except Exception as e2:
-            print(f"JSON 파싱 실패: {e2}")
-            return {"selected_tweets": []}
+    return message.content[0].text.strip()
+
+def analyze_tweets(all_tweets):
+    """하위 호환성 유지 — 기존 코드에서 호출하는 경우"""
+    return generate_daily_briefing(all_tweets, [])
 
 # ── 텔레그램 ──────────────────────────────────────────
 def send_telegram(text):
@@ -500,8 +548,43 @@ def save_blog_to_notion(entry, analysis):
         },
     )
 
-def save_tweet_briefing_to_notion(result, date_str):
+def save_daily_briefing_to_notion(briefing_text, date_str):
+    """데일리 브리핑 텍스트를 Notion VC Intel DB에 저장"""
     notion = Client(auth=NOTION_API_KEY)
+    title = f"데일리 브리핑 | {date_str}"
+
+    # 같은 날짜 이미 있으면 갱신
+    try:
+        existing = notion.databases.query(
+            database_id=NOTION_DATABASE_ID,
+            filter={"property": "제목", "title": {"equals": title}},
+            page_size=1,
+        ).get("results", [])
+    except Exception:
+        existing = []
+
+    props = {
+        "제목":      {"title": [{"text": {"content": title}}]},
+        "출처":      {"rich_text": [{"text": {"content": "데일리 브리핑"}}]},
+        "중요도":    {"select": {"name": "🔴 머스트리드"}},
+        "날짜":      {"date": {"start": date_str}},
+        "핵심 논지": {"rich_text": [{"text": {"content": briefing_text[:2000]}}]},
+        "처리 여부": {"checkbox": False},
+    }
+    if existing:
+        notion.pages.update(page_id=existing[0]["id"], properties=props)
+        print("데일리 브리핑 Notion 갱신 완료")
+    else:
+        notion.pages.create(
+            parent={"database_id": NOTION_DATABASE_ID},
+            properties=props,
+        )
+        print("데일리 브리핑 Notion 저장 완료")
+
+def save_tweet_briefing_to_notion(result, date_str):
+    """하위 호환성 유지"""
+    notion = Client(auth=NOTION_API_KEY)
+    title = f"X 브리핑 | {date_str}"
     lines = []
     for t in result.get("selected_tweets", []):
         emoji = "🔴" if t.get("importance") == "high" else "🟡"
@@ -520,18 +603,33 @@ def save_tweet_briefing_to_notion(result, date_str):
         lines.append("━━━━━━━━━━━━")
     briefing_content = "\n".join(lines)[:1900]
 
-    notion.pages.create(
-        parent={"database_id": NOTION_DATABASE_ID},
-        properties={
-            "제목":      {"title": [{"text": {"content": f"X 브리핑 | {date_str}"}}]},
-            "출처":      {"rich_text": [{"text": {"content": "X 브리핑"}}]},
-            "중요도":    {"select": {"name": "🟡 참고용"}},
-            "날짜":      {"date": {"start": date_str}},
-            "핵심 논지": {"rich_text": [{"text": {"content": briefing_content}}]},
-            "처리 여부": {"checkbox": False},
-        },
-    )
-    print("X 브리핑 Notion 저장 완료")
+    # 같은 날짜 X 브리핑이 이미 있으면 갱신 (재실행 시 중복 방지)
+    try:
+        existing = notion.databases.query(
+            database_id=NOTION_DATABASE_ID,
+            filter={"property": "제목", "title": {"equals": title}},
+            page_size=1,
+        ).get("results", [])
+    except Exception:
+        existing = []
+
+    props = {
+        "제목":      {"title": [{"text": {"content": title}}]},
+        "출처":      {"rich_text": [{"text": {"content": "X 브리핑"}}]},
+        "중요도":    {"select": {"name": "🟡 참고용"}},
+        "날짜":      {"date": {"start": date_str}},
+        "핵심 논지": {"rich_text": [{"text": {"content": briefing_content}}]},
+        "처리 여부": {"checkbox": False},
+    }
+    if existing:
+        notion.pages.update(page_id=existing[0]["id"], properties=props)
+        print("X 브리핑 Notion 갱신 완료 (기존 페이지)")
+    else:
+        notion.pages.create(
+            parent={"database_id": NOTION_DATABASE_ID},
+            properties=props,
+        )
+        print("X 브리핑 Notion 저장 완료")
 
 # ══════════════════════════════════════════════════════
 # 내러티브 클러스터링 (narrative_clustering)
@@ -567,7 +665,9 @@ CLUSTERING_PROMPT = """
       "direction": "강화 / 약화 / 혼재",
       "sources": ["출처 목록"],
       "calvin_signal": "이 내러티브가 왜 지금 강화/약화되는지 한 단락 분석. 기술·경제·시장 역학 관점.",
-      "next_catalyst": "다음에 확인해야 할 촉매 또는 리스크 한 줄"
+      "next_catalyst": "다음에 확인해야 할 촉매 또는 리스크 한 줄",
+      "sector": "DeFi/PerpDEX/Stablecoins/RWA/AI×Crypto/L1/L2/ZK·Privacy/Restaking/DePIN/Meme/기관·매크로/인프라 중 하나",
+      "key_projects": "이 내러티브 대표 프로젝트 2-3개"
     }}
   ],
   "week_summary": "이번 주 전체를 한 줄로 요약"
@@ -715,7 +815,7 @@ def claude_cluster(narrative_map):
     )
 
     message = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         max_tokens=8000,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -745,9 +845,28 @@ def format_narrative_signal_message(result):
         msg += "━━━━━━━━━━━━━━━\n"
     return msg
 
+def find_existing_narrative(notion, name):
+    """봇 자동생성 내러티브 중 같은 이름의 기존 페이지 검색"""
+    try:
+        res = notion.databases.query(
+            database_id=NARRATIVE_DB_ID,
+            filter={"and": [
+                {"property": "내러티브", "title": {"equals": name[:200]}},
+                {"property": "출처 타입", "select": {"equals": "봇 자동생성"}},
+            ]},
+            page_size=1,
+        )
+        results = res.get("results", [])
+        return results[0]["id"] if results else None
+    except Exception as e:
+        print(f"기존 내러티브 검색 오류 ({name}): {e}")
+        return None
+
 def save_narrative_signal_to_notion(result):
-    """Narrative Radar DB에 클러스터링 결과 저장"""
+    """Narrative Radar DB에 클러스터링 결과 저장 (upsert: 있으면 갱신, 없으면 생성)"""
     if not result or not NARRATIVE_DB_ID:
+        if not NARRATIVE_DB_ID:
+            print("⚠️ NARRATIVE_DATABASE_ID 미설정 — Narrative Radar DB 저장 건너뜀")
         return
     notion = Client(auth=NOTION_API_KEY)
     today = result.get("date", datetime.now().strftime("%Y-%m-%d"))
@@ -779,27 +898,300 @@ def save_narrative_signal_to_notion(result):
                 f"다음 촉매: {n.get('next_catalyst', '')}"
             )[:1900]
 
-            notion.pages.create(
-                parent={"database_id": NARRATIVE_DB_ID},
-                properties={
+            # 공통 속성 (생성/갱신 양쪽에 사용)
+            props = {
+                "상태":      {"select": {"name": status}},
+                "강도":      {"number": min(10.0, float(n.get("score", 0)))},  # 과거 DB와 동일한 1-10 스케일로 클램프
+                "모멘텀":    {"select": {"name": momentum}},
+                "한줄 요약": {"rich_text": [{"text": {"content": content}}]},
+                "근거 소스": {"rich_text": [{"text": {"content": sources_text}}]},
+                "섹터":      {"select": {"name": n.get("sector", "기타")[:100]}},
+                "핵심 프로젝트": {"rich_text": [{"text": {"content": n.get("key_projects", "")[:500]}}]},
+                # Cooling이면 종료일 기록, 아니면 진행 중(빈 값)으로 유지
+                "기간 종료": {"date": {"start": today} if status == "Cooling" else None},
+            }
+
+            existing_id = find_existing_narrative(notion, n["narrative"])
+            if existing_id:
+                notion.pages.update(page_id=existing_id, properties=props)
+                print(f"갱신: {n['narrative']} [{status}] 점수:{n.get('score', 0)}")
+            else:
+                props.update({
                     "내러티브":  {"title": [{"text": {"content": n["narrative"][:200]}}]},
                     "타입":      {"select": {"name": "메가"}},
-                    "상태":      {"select": {"name": status}},
-                    "강도":      {"number": float(n.get("score", 0))},
-                    "모멘텀":    {"select": {"name": momentum}},
                     "기간 시작": {"date": {"start": today}},
-                    "한줄 요약": {"rich_text": [{"text": {"content": content}}]},
-                    "근거 소스": {"rich_text": [{"text": {"content": sources_text}}]},
                     "출처 타입": {"select": {"name": "봇 자동생성"}},
                     "검수 완료": {"checkbox": False},
-                },
-            )
+                })
+                notion.pages.create(
+                    parent={"database_id": NARRATIVE_DB_ID},
+                    properties=props,
+                )
+                print(f"생성: {n['narrative']} [{status}] 점수:{n.get('score', 0)}")
             saved += 1
-            print(f"저장: {n['narrative']} [{status}] 점수:{n.get('score', 0)}")
         except Exception as e:
             print(f"Narrative Radar 저장 오류 ({n.get('narrative', '')}): {e}")
 
     print(f"Narrative Radar 업데이트 완료: {saved}개")
+
+
+# ══════════════════════════════════════════════════════
+# 위클리 브리핑
+# ══════════════════════════════════════════════════════
+
+WEEKLY_BRIEFING_PROMPT = """
+당신은 크립토/DeFi 시장 시니어 애널리스트입니다.
+
+아래는 이번 주(7일) 수집된 브리핑과 핵심 분석 내용입니다.
+이번 주 크립토/DeFi 세계 전체 흐름을 분석하세요.
+
+{weekly_data}
+
+출력 형식:
+---
+📊 크립토 위클리 브리핑 | {week}
+
+🌊 이번 주를 관통한 핵심 테마
+[이번 주 시장을 지배한 1~3개 테마 — 왜 이게 중요했는지]
+
+🔗 테마 간 연결 구조
+[각 테마가 서로 어떻게 연결되고 영향을 주는지]
+
+📈 이번 주 주목할 섹터 변화
+[어떤 섹터가 강화/약화됐는지 + 이유]
+
+🔄 지난주 대비 달라진 것
+[지난주 예측과 실제 결과 비교]
+
+🔭 다음 주 뭘 봐야 하나
+[다음 주 주요 촉매, 리스크, 관전 포인트]
+---
+"""
+
+def fetch_daily_snapshots(days=7):
+    """Notion에서 지난 N일 데일리 브리핑 스냅샷 가져오기"""
+    notion = Client(auth=NOTION_API_KEY)
+    cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    try:
+        res = notion.databases.query(
+            database_id=NOTION_DATABASE_ID,
+            filter={"and": [
+                {"property": "날짜", "date": {"on_or_after": cutoff}},
+                {"property": "출처", "rich_text": {"contains": "데일리 브리핑"}},
+            ]},
+            sorts=[{"property": "날짜", "direction": "descending"}],
+            page_size=days,
+        )
+        snapshots = []
+        for page in res.get("results", []):
+            p = page["properties"]
+            date = p.get("날짜", {}).get("date", {}).get("start", "")
+            text = ""
+            rt = p.get("핵심 논지", {}).get("rich_text", [])
+            if rt:
+                text = rt[0].get("plain_text", "")
+            if date and text:
+                snapshots.append({"date": date, "text": text})
+        print(f"데일리 스냅샷 {len(snapshots)}개 가져옴")
+        return snapshots
+    except Exception as e:
+        print(f"스냅샷 가져오기 오류: {e}")
+        return []
+
+def fetch_mustread_originals(days=7):
+    """Notion에서 지난 N일 머스트리드 원문 가져오기 (RAG)"""
+    notion = Client(auth=NOTION_API_KEY)
+    cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    try:
+        res = notion.databases.query(
+            database_id=NOTION_DATABASE_ID,
+            filter={"and": [
+                {"property": "날짜", "date": {"on_or_after": cutoff}},
+                {"property": "중요도", "select": {"equals": "🔴 머스트리드"}},
+            ]},
+            sorts=[{"property": "날짜", "direction": "descending"}],
+            page_size=20,
+        )
+        originals = []
+        for page in res.get("results", []):
+            p = page["properties"]
+            title = p.get("제목", {}).get("title", [{}])[0].get("plain_text", "")
+            text = ""
+            rt = p.get("핵심 논지", {}).get("rich_text", [])
+            if rt:
+                text = rt[0].get("plain_text", "")
+            date = p.get("날짜", {}).get("date", {}).get("start", "")
+            if title and text:
+                originals.append({"title": title, "date": date, "text": text})
+        print(f"머스트리드 원문 {len(originals)}개 가져옴")
+        return originals
+    except Exception as e:
+        print(f"원문 가져오기 오류: {e}")
+        return []
+
+def run_weekly_briefing():
+    """위클리 브리핑 생성 — 7일 스냅샷 + 머스트리드 원문"""
+    print("\n--- 위클리 브리핑 시작 ---")
+    from datetime import date
+    week = date.today().strftime("%Y-W%W")
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    snapshots = fetch_daily_snapshots(days=7)
+    originals = fetch_mustread_originals(days=7)
+
+    if not snapshots and not originals:
+        print("위클리: 데이터 없음")
+        return
+
+    weekly_data = "=== 이번 주 데일리 스냅샷 ===\n"
+    for s in snapshots:
+        weekly_data += f"\n[{s['date']}]\n{s['text'][:500]}\n"
+
+    weekly_data += "\n=== 이번 주 머스트리드 원문 ===\n"
+    for o in originals:
+        weekly_data += f"\n[{o['date']} | {o['title']}]\n{o['text'][:800]}\n"
+
+    client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
+    prompt = WEEKLY_BRIEFING_PROMPT.format(weekly_data=weekly_data, week=week)
+    message = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=6000,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    briefing = message.content[0].text.strip()
+    send_telegram(briefing)
+
+    # Narrative Radar DB에 위클리 스냅샷 저장
+    if NARRATIVE_DB_ID:
+        notion = Client(auth=NOTION_API_KEY)
+        try:
+            notion.pages.create(
+                parent={"database_id": NARRATIVE_DB_ID},
+                properties={
+                    "내러티브":  {"title": [{"text": {"content": f"위클리 | {week}"}}]},
+                    "한줄 요약": {"rich_text": [{"text": {"content": briefing[:2000]}}]},
+                    "출처 타입": {"select": {"name": "봇 자동생성"}},
+                    "기간 시작": {"date": {"start": today}},
+                },
+            )
+            print(f"위클리 스냅샷 저장 완료: {week}")
+        except Exception as e:
+            print(f"위클리 저장 오류: {e}")
+
+    print("--- 위클리 브리핑 완료 ---\n")
+
+
+# ══════════════════════════════════════════════════════
+# 먼슬리 브리핑
+# ══════════════════════════════════════════════════════
+
+MONTHLY_BRIEFING_PROMPT = """
+당신은 크립토/DeFi 시장 시니어 애널리스트입니다.
+
+아래는 이번 달 수집된 위클리 스냅샷과 핵심 분석입니다.
+이번 달 크립토/DeFi 세계의 큰 그림을 분석하세요.
+
+{monthly_data}
+
+출력 형식:
+---
+📅 크립토 먼슬리 브리핑 | {month}
+
+🏔 이번 달 지배한 내러티브
+[이번 달 가장 강하게 자리잡은 내러티브 + 왜]
+
+🌱 새로 뜬 것
+[이번 달 새롭게 부상한 테마/섹터]
+
+🍂 식어가는 것
+[이번 달 약화된 테마/섹터 + 왜]
+
+🔄 지난달 대비 구조적 변화
+[시장 구조가 어떻게 달라졌는지]
+
+🔭 다음 달 주목할 것
+[다음 달 주요 촉매, 이벤트, 리스크]
+---
+"""
+
+def fetch_weekly_snapshots(weeks=4):
+    """Notion Narrative Radar DB에서 위클리 스냅샷 가져오기"""
+    notion = Client(auth=NOTION_API_KEY)
+    cutoff = (datetime.now() - timedelta(days=weeks*7)).strftime("%Y-%m-%d")
+    try:
+        res = notion.databases.query(
+            database_id=NARRATIVE_DB_ID,
+            filter={"and": [
+                {"property": "기간 시작", "date": {"on_or_after": cutoff}},
+                {"property": "내러티브", "title": {"contains": "위클리"}},
+            ]},
+            sorts=[{"property": "기간 시작", "direction": "descending"}],
+            page_size=weeks,
+        )
+        snapshots = []
+        for page in res.get("results", []):
+            p = page["properties"]
+            title = p.get("내러티브", {}).get("title", [{}])[0].get("plain_text", "")
+            text = ""
+            rt = p.get("한줄 요약", {}).get("rich_text", [])
+            if rt:
+                text = rt[0].get("plain_text", "")
+            if title and text:
+                snapshots.append({"title": title, "text": text})
+        print(f"위클리 스냅샷 {len(snapshots)}개 가져옴")
+        return snapshots
+    except Exception as e:
+        print(f"위클리 스냅샷 가져오기 오류: {e}")
+        return []
+
+def run_monthly_briefing():
+    """먼슬리 브리핑 생성 — 4주 스냅샷 + 머스트리드 원문"""
+    print("\n--- 먼슬리 브리핑 시작 ---")
+    month = datetime.now().strftime("%Y-%m")
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    weekly_snaps = fetch_weekly_snapshots(weeks=4)
+    originals = fetch_mustread_originals(days=30)
+
+    if not weekly_snaps and not originals:
+        print("먼슬리: 데이터 없음")
+        return
+
+    monthly_data = "=== 이번 달 위클리 스냅샷 ===\n"
+    for s in weekly_snaps:
+        monthly_data += f"\n[{s['title']}]\n{s['text'][:600]}\n"
+
+    monthly_data += "\n=== 이번 달 머스트리드 원문 (핵심만) ===\n"
+    for o in originals[:10]:
+        monthly_data += f"\n[{o['date']} | {o['title']}]\n{o['text'][:600]}\n"
+
+    client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
+    prompt = MONTHLY_BRIEFING_PROMPT.format(monthly_data=monthly_data, month=month)
+    message = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=6000,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    briefing = message.content[0].text.strip()
+    send_telegram(briefing)
+
+    if NARRATIVE_DB_ID:
+        notion = Client(auth=NOTION_API_KEY)
+        try:
+            notion.pages.create(
+                parent={"database_id": NARRATIVE_DB_ID},
+                properties={
+                    "내러티브":  {"title": [{"text": {"content": f"먼슬리 | {month}"}}]},
+                    "한줄 요약": {"rich_text": [{"text": {"content": briefing[:2000]}}]},
+                    "출처 타입": {"select": {"name": "봇 자동생성"}},
+                    "기간 시작": {"date": {"start": today}},
+                },
+            )
+            print(f"먼슬리 스냅샷 저장 완료: {month}")
+        except Exception as e:
+            print(f"먼슬리 저장 오류: {e}")
+
+    print("--- 먼슬리 브리핑 완료 ---\n")
 
 def run_narrative_clustering():
     """내러티브 클러스터링 전체 실행"""
@@ -864,13 +1256,20 @@ def main():
         if not new_blogs:
             send_telegram("📰 새 블로그 없음")
 
+        # 트윗/클러스터링에서 크래시 나도 재분석 방지되도록 여기서 즉시 저장
+        save_seen(seen)
+
     # 2. 트윗 수집
     if mode in ("all", "tweets"):
         send_telegram(f"🐦 *트윗 수집 중...* ({len(X_ACCOUNTS)}개 계정)")
         print("\n--- 트윗 수집 시작 ---")
         all_tweets = []
         for account in X_ACCOUNTS:
-            tweets = fetch_tweets(account)
+            try:
+                tweets = fetch_tweets(account)
+            except Exception as e:
+                print(f"트윗 수집 실패 (@{account['handle']}): {e}")
+                tweets = []
             print(f"@{account['handle']}: {len(tweets)}개 트윗")
             if tweets:
                 all_tweets.append({
@@ -883,33 +1282,28 @@ def main():
         total_tweets = sum(len(a["tweets"]) for a in all_tweets)
         print(f"\n총 {total_tweets}개 트윗 수집")
 
-        if total_tweets > 0:
-            send_telegram(f"🤖 *Claude 분석 중...* 트윗 {total_tweets}개 → 상위 7-10개 선별")
+        # 트윗 + 블로그 통합 데일리 브리핑
+        if total_tweets > 0 or blog_analyses:
+            send_telegram(f"🤖 *Claude 데일리 브리핑 생성 중...* (트윗 {total_tweets}개 + 블로그 {len(blog_analyses)}개)")
             try:
-                tweet_result = analyze_tweets(all_tweets)
-                if tweet_result and tweet_result.get("selected_tweets"):
-                    selected = tweet_result["selected_tweets"]
-                    high   = [t for t in selected if t.get("importance") == "high"]
-                    medium = [t for t in selected if t.get("importance") == "medium"]
-                    send_telegram(f"📊 분석 완료: {len(selected)}개 선별 (🔴 {len(high)}개 / 🟡 {len(medium)}개)")
-                    msg = format_tweet_briefing(tweet_result)
-                    if msg.strip():
-                        send_telegram(msg)
-                    save_tweet_briefing_to_notion(tweet_result, today)
+                briefing = generate_daily_briefing(all_tweets, blog_analyses)
+                if briefing:
+                    send_telegram(briefing)
+                    save_daily_briefing_to_notion(briefing, today)
                 else:
-                    send_telegram("⚠️ 오늘 선별된 트윗이 없어요.")
+                    send_telegram("⚠️ 오늘 브리핑 생성 실패")
             except Exception as e:
                 err = str(e)
                 if "usage limits" in err or "credit" in err.lower():
                     send_telegram("❌ *Claude API 오류*: 크레딧 부족")
                 else:
                     send_telegram(f"❌ *오류 발생*: {err[:200]}")
-                print(f"트윗 브리핑 오류: {e}")
+                print(f"데일리 브리핑 오류: {e}")
         else:
-            send_telegram("🐦 오늘 새 트윗 없음")
+            send_telegram("🐦 오늘 새 데이터 없음")
 
-    # 3. 내러티브 클러스터링 (매일 전체 실행 시에만)
-    if mode == "all":
+    # 3. 내러티브 클러스터링 (데일리 실행 시)
+    if mode in ("all", "daily"):
         try:
             send_telegram("🧭 *내러티브 클러스터링 중...*")
             run_narrative_clustering()
@@ -919,6 +1313,28 @@ def main():
     save_seen(seen)
     send_telegram("✅ *완료!*")
     print(f"\n[{datetime.now()}] 완료")
+
+def run_weekly():
+    """위클리 브리핑 실행 (매주 월요일)"""
+    print(f"[{datetime.now()}] 위클리 브리핑 시작")
+    send_telegram("📊 *위클리 브리핑 생성 중...*")
+    try:
+        run_weekly_briefing()
+        send_telegram("✅ *위클리 완료!*")
+    except Exception as e:
+        send_telegram(f"❌ 위클리 오류: {e}")
+        print(f"위클리 오류: {e}")
+
+def run_monthly():
+    """먼슬리 브리핑 실행 (매월 1일)"""
+    print(f"[{datetime.now()}] 먼슬리 브리핑 시작")
+    send_telegram("📅 *먼슬리 브리핑 생성 중...*")
+    try:
+        run_monthly_briefing()
+        send_telegram("✅ *먼슬리 완료!*")
+    except Exception as e:
+        send_telegram(f"❌ 먼슬리 오류: {e}")
+        print(f"먼슬리 오류: {e}")
 
 
 if __name__ == "__main__":
