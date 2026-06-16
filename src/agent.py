@@ -568,7 +568,7 @@ def save_daily_briefing_to_notion(briefing_text, date_str):
         "출처":      {"rich_text": [{"text": {"content": "데일리 브리핑"}}]},
         "중요도":    {"select": {"name": "🔴 머스트리드"}},
         "날짜":      {"date": {"start": date_str}},
-        "핵심 논지": {"rich_text": [{"text": {"content": briefing_text[:2000]}}]},
+        "핵심 논지": {"rich_text": [{"text": {"content": briefing_text[:1900]}}]},
         "처리 여부": {"checkbox": False},
     }
     if existing:
@@ -736,7 +736,10 @@ def parse_signals(pages):
                 direction_part = content.split("방향:")[1].split("|")[0].strip()
                 reason_part = content.split("근거:")[1].strip() if "근거:" in content else ""
 
-                if narrative_part and direction_part:
+                # 접근불가/분석불가 노이즈 제거
+                NOISE_KEYWORDS = ["접근 불가", "분석 불가", "판단 불가", "확인 필요", "불가능", "알 수 없"]
+                is_noise = any(kw in narrative_part for kw in NOISE_KEYWORDS)
+                if narrative_part and direction_part and not is_noise:
                     signals.append({
                         "source": source,
                         "source_type": source_type,
@@ -905,7 +908,7 @@ def save_narrative_signal_to_notion(result):
                 "모멘텀":    {"select": {"name": momentum}},
                 "한줄 요약": {"rich_text": [{"text": {"content": content}}]},
                 "근거 소스": {"rich_text": [{"text": {"content": sources_text}}]},
-                "섹터":      {"select": {"name": n.get("sector", "기타")[:100]}},
+                "섹터":      {"multi_select": [{"name": n.get("sector", "기타")[:100]}]},
                 "핵심 프로젝트": {"rich_text": [{"text": {"content": n.get("key_projects", "")[:500]}}]},
                 # Cooling이면 종료일 기록, 아니면 진행 중(빈 값)으로 유지
                 "기간 종료": {"date": {"start": today} if status == "Cooling" else None},
