@@ -965,7 +965,7 @@ def claude_cluster(narrative_map):
 
     aggregated_text = ""
     for name, data in sorted(
-        sector_map.items(),
+        narrative_map.items(),
         key=lambda x: x[1].get("mindshare_score", x[1].get("total_score", 0)),
         reverse=True
     ):
