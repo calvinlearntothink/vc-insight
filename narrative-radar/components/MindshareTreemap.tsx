@@ -59,11 +59,12 @@ export default function MindshareTreemap({ data, timeframe, onTimeframeChange }:
         <div style={{ display: 'flex', gap: 4 }}>
           {(['7d', '30d'] as const).map(t => (
             <button key={t} onClick={() => onTimeframeChange(t)}
-              style={{ fontSize: 11, padding: '3px 10px', borderRadius: 99,
-                border: '0.5px solid ' + (timeframe === t ? '#fff' : '#333'),
-                color: timeframe === t ? '#000' : '#555',
-                background: timeframe === t ? '#fff' : 'transparent', cursor: 'pointer' }}>
-              {t === '7d' ? '7일' : '30일'}
+              className="data"
+              style={{ fontSize: 11, padding: '5px 14px', borderRadius: 2,
+                border: '1px solid ' + (timeframe === t ? 'var(--accent)' : 'var(--hairline)'),
+                color: timeframe === t ? 'var(--accent)' : 'var(--text-muted)',
+                background: timeframe === t ? 'var(--accent-dim)' : 'transparent', cursor: 'pointer' }}>
+              {t === '7d' ? '7D' : '30D'}
             </button>
           ))}
         </div>
@@ -71,12 +72,12 @@ export default function MindshareTreemap({ data, timeframe, onTimeframeChange }:
 
       {data.length === 0 ? (
         <div style={{ height: H, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          border: '0.5px solid #1a1a1a', borderRadius: 8, color: '#333', fontSize: 12 }}>
+          border: '1px solid var(--hairline)', borderRadius: 2, color: 'var(--text-faint)', fontSize: 12 }}>
           데이터 수집 중입니다 · 매일 09:00 KST 업데이트
         </div>
       ) : (
         <div style={{ position: 'relative', width: '100%', height: H,
-          border: '0.5px solid #1a1a1a', borderRadius: 8, overflow: 'hidden' }}>
+          border: '1px solid var(--hairline)', borderRadius: 2, overflow: 'hidden' }}>
           {cells.map((c, i) => {
             const color = SECTOR_COLORS[c.sector] ?? DEFAULT_COLOR
             const isSel = selected === c.sector
@@ -84,19 +85,20 @@ export default function MindshareTreemap({ data, timeframe, onTimeframeChange }:
             return (
               <div key={i} onClick={() => setSelected(isSel ? null : c.sector)}
                 title={`${c.sector} · ${c.pct}% · ${c.status}`}
+                className="treemap-cell"
                 style={{ position: 'absolute', left: c.x, top: c.y, width: c.w, height: c.h,
-                  background: color + '22', border: '0.5px solid ' + color + (isSel ? '' : '44'),
-                  outline: isSel ? `2px solid ${color}` : 'none',
-                  cursor: 'pointer', overflow: 'hidden', transition: 'opacity .15s',
-                  opacity: selected && !isSel ? 0.3 : 1 }}>
+                  background: color + '18', border: '1px solid ' + color + (isSel ? 'cc' : '40'),
+                  boxShadow: isSel ? `0 0 16px ${color}40 inset` : 'none',
+                  cursor: 'pointer', overflow: 'hidden',
+                  opacity: selected && !isSel ? 0.35 : 1 }}>
                 {show && <>
                   <div style={{ position: 'absolute', bottom: 18, left: 8, right: 4,
-                    fontSize: Math.min(12, c.w / 8), fontWeight: 500, color,
+                    fontSize: Math.min(12, c.w / 8), fontWeight: 600, color, fontFamily: "'Libre Franklin', sans-serif",
                     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {c.sector}
                   </div>
-                  <div style={{ position: 'absolute', bottom: 5, left: 8,
-                    fontSize: 10, color: color + 'aa' }}>
+                  <div className="data" style={{ position: 'absolute', bottom: 5, left: 8,
+                    fontSize: 10, color: color + 'cc' }}>
                     {c.pct}%
                   </div>
                 </>}
@@ -108,15 +110,17 @@ export default function MindshareTreemap({ data, timeframe, onTimeframeChange }:
 
       {/* 상세 패널 */}
       {sel && (
-        <div style={{ marginTop: 10, padding: 14, border: '0.5px solid ' + (SECTOR_COLORS[sel.sector] ?? '#333') + '66',
-          borderRadius: 8, background: (SECTOR_COLORS[sel.sector] ?? '#222') + '0A' }}>
+        <div style={{ marginTop: 12, padding: 18, border: '1px solid ' + (SECTOR_COLORS[sel.sector] ?? '#333') + '70',
+          borderRadius: 2, background: (SECTOR_COLORS[sel.sector] ?? '#222') + '0C',
+          borderLeft: '3px solid ' + (SECTOR_COLORS[sel.sector] ?? '#333') }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
             <span style={{ fontSize: 15, fontWeight: 500, color: '#fff' }}>{sel.sector}</span>
             <span style={{ fontSize: 12, color: '#555' }}>{sel.pct}% 마인드쉐어</span>
-            <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 99,
-              background: sel.status === 'Rising' ? '#1D9E7520' : sel.status === 'Cooling' ? '#D85A3020' : '#33333340',
-              color: sel.status === 'Rising' ? '#1D9E75' : sel.status === 'Cooling' ? '#D85A30' : '#666',
-              border: '0.5px solid ' + (sel.status === 'Rising' ? '#1D9E7550' : sel.status === 'Cooling' ? '#D85A3050' : '#333') }}>
+            <span className="data" style={{ fontSize: 10, padding: '2px 8px', borderRadius: 2,
+              background: sel.status === 'Rising' ? 'var(--accent-dim)' : sel.status === 'Cooling' ? 'var(--warn-dim)' : '#33333340',
+              color: sel.status === 'Rising' ? 'var(--accent)' : sel.status === 'Cooling' ? 'var(--warn)' : '#666',
+              border: '1px solid ' + (sel.status === 'Rising' ? 'var(--accent)' : sel.status === 'Cooling' ? 'var(--warn)' : '#333'),
+              textTransform: 'uppercase', letterSpacing: '.04em' }}>
               {sel.status}
             </span>
             <span style={{ marginLeft: 'auto', fontSize: 11, color: '#444' }}>

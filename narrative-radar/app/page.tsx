@@ -2,6 +2,8 @@ import { getNarratives, getSignalFeed, getMindshare } from '@/lib/notion'
 import Timeline from '@/components/Timeline'
 import SignalFeed from '@/components/SignalFeed'
 import MindshareClient from '@/components/MindshareClient'
+import SideNav from '@/components/SideNav'
+import TopNav from '@/components/TopNav'
 
 export const revalidate = 3600
 
@@ -22,87 +24,91 @@ export default async function Home() {
     console.error('Notion fetch 실패:', e)
   }
 
-  const today = new Date().toLocaleDateString('ko-KR', {
-    year: 'numeric', month: 'long', day: 'numeric'
-  })
-
   const latest = feed[0]?.date ?? ''
   const todayISO = new Date().toISOString().slice(0, 10)
   const isToday = latest === todayISO
   const staleDays = latest ? Math.floor((Date.parse(todayISO) - Date.parse(latest)) / 86400000) : null
 
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', padding: '1.25rem 1rem' }}>
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+      <SideNav active="radar" />
 
-      {/* 탑바 */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        borderBottom: '0.5px solid #1e1e1e', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#1D9E75' }} />
-          <span style={{ fontSize: 13, fontWeight: 500 }}>Narrative Radar</span>
-          <span style={{ fontSize: 11, color: '#444', marginLeft: 2 }}>by Calvin</span>
-        </div>
-        <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-          <a href="/daily" style={{ fontSize: 12, color: '#1D9E75', textDecoration: 'none' }}>데일리 브리핑</a>
-          <a href="/timeline" style={{ fontSize: 12, color: '#444', textDecoration: 'none' }}>타임라인</a>
-          <span style={{ fontSize: 11, color: '#444' }}>{today}</span>
-        </div>
-      </div>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <TopNav active="radar" />
 
-      {/* 마인드쉐어 트리맵 */}
-      <div style={{ marginBottom: '2rem' }}>
-        <MindshareClient data7d={mindshare7d} data30d={mindshare30d} />
-      </div>
+        <main style={{ flex: 1, overflowY: 'auto', background: 'var(--bg)' }}>
+          <div style={{ maxWidth: 1100, margin: '0 auto', padding: '2rem 2rem 4rem' }}>
 
-      {/* 시그널 피드 */}
-      <div style={{ marginBottom: '2rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-          <span style={{ fontSize: 10, color: '#444', letterSpacing: '.06em', textTransform: 'uppercase' }}>
-            {isToday ? '오늘 시그널' : '최근 시그널'}
-          </span>
-          {!isToday && latest && (
-            <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 99,
-              background: '#D85A3015', color: '#D85A30', border: '0.5px solid #D85A3030' }}>
-              마지막 업데이트 {latest.slice(5)} · {staleDays}일 전
-            </span>
-          )}
-          {isToday && <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#1D9E75', display: 'inline-block' }} />}
-          <a href="/daily" style={{ marginLeft: 'auto', fontSize: 11, color: '#1D9E75', textDecoration: 'none' }}>
-            데일리 브리핑 전체 보기 →
-          </a>
-        </div>
-
-        {/* 시그널 카드 티커 */}
-        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
-          {feed.slice(0, 6).map(f => (
-            <div key={f.id} style={{ flexShrink: 0, width: 200, padding: '10px 12px',
-              border: '0.5px solid #1e1e1e', borderRadius: 8, background: '#0d0d0d' }}>
-              <div style={{ fontSize: 10, color: '#444', marginBottom: 4 }}>{f.source}</div>
-              <div style={{ fontSize: 12, color: '#bbb', lineHeight: 1.4,
-                overflow: 'hidden', display: '-webkit-box',
-                WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                {f.title || f.summary.slice(0, 60)}
+            {/* 헤더 */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
+              marginBottom: '1.5rem', flexWrap: 'wrap', gap: 16 }}>
+              <div>
+                <div className="data" style={{ fontSize: 11, color: 'var(--accent)',
+                  letterSpacing: '.12em', textTransform: 'uppercase' }}>Market Overview</div>
+                <h1 className="headline" style={{ fontSize: 28, fontWeight: 700, color: '#fff',
+                  marginTop: 6 }}>마인드쉐어</h1>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                  VC 시그널 기반 섹터별 attention 분포
+                </p>
               </div>
-              {f.narrative && (
-                <div style={{ fontSize: 10, color: '#1D9E75', marginTop: 4 }}>→ {f.narrative}</div>
-              )}
             </div>
-          ))}
-        </div>
+
+            {/* 마인드쉐어 트리맵 */}
+            <div style={{ marginBottom: '2.5rem' }}>
+              <MindshareClient data7d={mindshare7d} data30d={mindshare30d} />
+            </div>
+
+            {/* 시그널 티커 */}
+            <div className="hairline" style={{ background: 'var(--bg-card)', overflow: 'hidden',
+              height: 40, display: 'flex', alignItems: 'center', marginBottom: '2.5rem' }}>
+              <div className="signal-ticker-scroll" style={{ display: 'flex', whiteSpace: 'nowrap' }}>
+                {[0, 1].map(dup => (
+                  <div key={dup} style={{ display: 'flex', gap: 32, padding: '0 16px', alignItems: 'center' }}>
+                    {feed.slice(0, 6).map(f => (
+                      <span key={f.id + dup} className="data" style={{ fontSize: 12,
+                        color: f.direction === '약화' ? 'var(--warn)' : 'var(--accent)' }}>
+                        {f.source} · {(f.title || f.summary).slice(0, 40)}
+                        {f.narrative && <span style={{ opacity: 0.5 }}> / {f.narrative}</span>}
+                      </span>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 시그널 피드 헤더 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <span className="data" style={{ fontSize: 10, color: 'var(--text-faint)',
+                letterSpacing: '.1em', textTransform: 'uppercase' }}>
+                {isToday ? '오늘 시그널' : '최근 시그널'}
+              </span>
+              {!isToday && latest && (
+                <span className="data" style={{ fontSize: 10, padding: '1px 8px', borderRadius: 2,
+                  background: 'var(--warn-dim)', color: 'var(--warn)', border: '1px solid var(--warn)' }}>
+                  마지막 업데이트 {latest.slice(5)} · {staleDays}일 전
+                </span>
+              )}
+              {isToday && <span style={{ width: 5, height: 5, borderRadius: '50%',
+                background: 'var(--accent)', display: 'inline-block' }} />}
+              <a href="/daily" style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--accent)' }}>
+                데일리 브리핑 전체 보기 →
+              </a>
+            </div>
+
+            <SignalFeed feed={feed} />
+
+            {/* 타임라인 */}
+            <div style={{ marginTop: '3rem' }}>
+              <div className="data" style={{ fontSize: 10, color: 'var(--text-faint)',
+                letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: 14 }}>
+                내러티브 타임라인 · 2019 → 현재
+              </div>
+              <Timeline narratives={narratives} />
+            </div>
+
+          </div>
+        </main>
       </div>
-
-      {/* 시그널 피드 리스트 */}
-      <SignalFeed feed={feed} />
-
-      {/* 타임라인 */}
-      <div style={{ marginTop: '2.5rem' }}>
-        <div style={{ fontSize: 10, color: '#444', letterSpacing: '.06em',
-          textTransform: 'uppercase', marginBottom: 12 }}>
-          내러티브 타임라인 · 2019 → 현재
-        </div>
-        <Timeline narratives={narratives} />
-      </div>
-
     </div>
   )
 }
