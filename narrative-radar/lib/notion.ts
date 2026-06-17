@@ -10,7 +10,7 @@ export async function getNarratives() {
     sorts: [{ property: '기간 시작', direction: 'ascending' }],
     page_size: 100,
   })
-  return res.results.map((page: any) => {
+  const all = res.results.map((page: any) => {
     const p = page.properties
     return {
       id: page.id,
@@ -36,6 +36,12 @@ export async function getNarratives() {
       endDate:    p['기간 종료']?.date?.start ?? '',
       sourceType: p['출처 타입']?.select?.name ?? '',
     }
+  })
+  // 타임라인은 메가/서브 내러티브만 — 출처 타입이 "봇 자동생성"이면서
+  // 종료일이 없는 매일 클러스터링 단발 시그널은 제외 (마인드쉐어 트리맵 전용)
+  return all.filter(n => {
+    const isDailyBotNoise = n.sourceType === '봇 자동생성' && !n.endDate
+    return !isDailyBotNoise
   })
 }
 
