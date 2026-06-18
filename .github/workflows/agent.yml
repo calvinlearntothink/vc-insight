@@ -43,9 +43,9 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "AGENT_MODE=${{ github.event.inputs.mode }}" >> $GITHUB_ENV
-          elif [ "$(date -u +%H:%M)" = "00:30" ]; then
+          elif [ "${{ github.event.schedule }}" = "30 0 * * 1" ]; then
             echo "AGENT_MODE=weekly" >> $GITHUB_ENV
-          elif [ "$(date -u +%d)" = "01" ] && [ "$(date -u +%H)" = "01" ]; then
+          elif [ "${{ github.event.schedule }}" = "0 1 1 * *" ]; then
             echo "AGENT_MODE=monthly" >> $GITHUB_ENV
           else
             echo "AGENT_MODE=daily" >> $GITHUB_ENV
