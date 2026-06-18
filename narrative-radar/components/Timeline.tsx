@@ -10,10 +10,13 @@ const SECTOR_COLORS: Record<string, string> = {
 const DEFAULT_COLOR = '#5F5E5A'
 
 const START_YEAR = 2019.5
-const END_YEAR   = 2026.6
-const RANGE      = END_YEAR - START_YEAR
+// 현재 시점 기반 동적 계산 — 연도가 지나도 차트가 자동 확장
+const NOW = new Date()
+const NOW_F = NOW.getFullYear() + NOW.getMonth() / 12
+const END_YEAR = NOW_F + 0.5
+const RANGE    = END_YEAR - START_YEAR
 const MIN_H = 14
-const MAX_H = 48
+const MAX_H = 52
 const ROW_GAP = 5
 
 function yearToDate(ys: string): number {
@@ -24,7 +27,9 @@ function yearToDate(ys: string): number {
 
 function barH(strength: number) {
   const s = Math.max(5, Math.min(10, strength))
-  return MIN_H + ((s - 5) / 5) * (MAX_H - MIN_H)
+  // 비선형(제곱) 스케일 — 9.5 vs 7.0 차이가 눈에 보이게
+  const t = (s - 5) / 5
+  return MIN_H + Math.pow(t, 1.6) * (MAX_H - MIN_H)
 }
 
 interface Narrative {
@@ -47,13 +52,14 @@ interface Narrative {
 }
 
 // 행 충돌 없이 row 배치
-function assignRows(narrs: Narrative[]): (Narrative & { row: number; startF: number; endF: number })[] {
+function assignRows(narrs: Narrative[]): (Narrative & { row: number; startF: number; endF: number; ongoing: boolean })[] {
   const rows: [number, number][] = []
   return narrs
     .filter(n => n.startDate)
     .map(n => {
       const sf = yearToDate(n.startDate)
-      const ef = n.endDate ? yearToDate(n.endDate) : END_YEAR
+      const ongoing = !n.endDate
+      const ef = ongoing ? NOW_F + 0.08 : yearToDate(n.endDate)
       let row = 0
       while (true) {
         if (!rows[row] || rows[row][1] <= sf + 0.05) {
@@ -62,7 +68,7 @@ function assignRows(narrs: Narrative[]): (Narrative & { row: number; startF: num
         }
         row++
       }
-      return { ...n, row, startF: sf, endF: ef }
+      return { ...n, row, startF: sf, endF: ef, ongoing }
     })
 }
 
@@ -83,8 +89,9 @@ export default function Timeline({ narratives }: { narratives: Narrative[] }) {
   const lastH = Math.max(...placed.filter(n => n.row === maxRow).map(n => barH(n.strength)), MIN_H)
   const totalH = rowTops[maxRow] + lastH
 
-  const YEARS = [2020, 2021, 2022, 2023, 2024, 2025, 2026]
-  const nowPct = ((2026 - START_YEAR) / RANGE) * 100
+  const CURRENT_YEAR = NOW.getFullYear()
+  const YEARS = Array.from({ length: CURRENT_YEAR - 2019 }, (_, i) => 2020 + i)
+  const nowPct = ((NOW_F - START_YEAR) / RANGE) * 100
 
   const sel = selected ? placed.find(n => n.id === selected) : null
 
@@ -98,15 +105,15 @@ export default function Timeline({ narratives }: { narratives: Narrative[] }) {
             marginBottom:6 }}>
             {YEARS.map(y => {
               const pct = ((y - START_YEAR) / RANGE) * 100
-              const isNow = y === 2026
+              const isNow = y === CURRENT_YEAR
               return (
                 <div key={y} style={{ position:'absolute', left:`${pct}%`,
                   top:4, transform:'translateX(-50%)',
                   display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
-                  <div style={{ width:'0.5px', height:5, background:'#222' }} />
-                  <span style={{ fontSize:10, color: isNow ? '#1D9E75' : '#333',
+                  <div style={{ width:'0.5px', height:5, background:'var(--outline-variant)' }} />
+                  <span style={{ fontSize:10, color: isNow ? 'var(--primary)' : 'var(--on-surface-variant)',
                     fontWeight: isNow ? 500 : 400, whiteSpace:'nowrap' }}>
-                    {isNow ? '2026 ▶' : y}
+                    {isNow ? `${y} ▶` : y}
                   </span>
                 </div>
               )
@@ -114,7 +121,7 @@ export default function Timeline({ narratives }: { narratives: Narrative[] }) {
             {/* Now line */}
             <div style={{ position:'absolute', left:`${nowPct}%`, top:0,
               height: 22 + 6 + totalH, width:'0.5px',
-              background:'#1D9E75', opacity:.2, pointerEvents:'none' }} />
+              background:'var(--primary)', opacity:.12, pointerEvents:'none' }} />
           </div>
 
           {/* 바 */}
@@ -131,6 +138,7 @@ export default function Timeline({ narratives }: { narratives: Narrative[] }) {
               return (
                 <div
                   key={n.id}
+                  title={`${n.name} · 강도 ${n.strength}/10 · ${n.startDate}${n.ongoing ? ' ~ 진행 중' : ` ~ ${n.endDate}`}`}
                   onClick={() => {
                     setSelected(isSelected ? null : n.id)
                     setDimAll(!isSelected)
@@ -141,17 +149,25 @@ export default function Timeline({ narratives }: { narratives: Narrative[] }) {
                     position:'absolute', left:`${left}%`, width:`${width}%`,
                     top, height:h, background:color, borderRadius:4,
                     cursor:'pointer', overflow:'hidden',
-                    display:'flex', alignItems:'center', padding:'0 8px',
+                    display:'flex', alignItems:'center', gap:6, padding:'0 8px',
                     opacity: dim ? 0.15 : 1,
                     filter: isSelected ? 'brightness(1.2)' : 'none',
                     transition:'opacity .15s, filter .15s',
                     border: isSelected ? `1.5px solid ${color}` : 'none',
+                    boxShadow: n.ongoing ? `0 0 12px ${color}66, 0 0 3px ${color}` : 'none',
                   }}
                 >
-                  <span style={{ fontSize:10, fontWeight:500, color:'#fff',
-                    whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                  <span style={{ fontSize:10, fontWeight:500, color:'#ffffff',
+                    whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+                    flex:1, minWidth:0 }}>
                     {n.name}
                   </span>
+                  {width > 7 && (
+                    <span style={{ fontSize:9, fontWeight:600, color:'#ffffffcc',
+                      flexShrink:0, fontVariantNumeric:'tabular-nums' }}>
+                      {n.strength}
+                    </span>
+                  )}
                 </div>
               )
             })}
@@ -162,13 +178,13 @@ export default function Timeline({ narratives }: { narratives: Narrative[] }) {
 
       {/* 상세 패널 */}
       {sel && (
-        <div style={{ background:'#111', border:'0.5px solid #222', borderRadius:12,
+        <div style={{ background:'var(--surface-container)', border:'1px solid var(--outline-variant)', borderRadius:12,
           padding:'1.25rem', marginTop:'1rem' }}>
           <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
             <div style={{ width:8, height:8, borderRadius:'50%',
               background: SECTOR_COLORS[sel.sector?.[0]] ?? DEFAULT_COLOR }} />
             <span style={{ fontSize:15, fontWeight:500 }}>{sel.name}</span>
-            <span style={{ fontSize:11, color:'#444', marginLeft:'auto' }}>
+            <span style={{ fontSize:11, color:'var(--on-surface-variant)', marginLeft:'auto' }}>
               {sel.startDate} ~ {sel.endDate || '현재'} · strength {sel.strength}/10
             </span>
           </div>
@@ -180,8 +196,8 @@ export default function Timeline({ narratives }: { narratives: Narrative[] }) {
               { label:'매크로 맥락',     value: sel.macro },
               { label:'메커니즘',        value: sel.mechanism },
             ].map(b => b.value ? (
-              <div key={b.label} style={{ background:'#1a1a1a', borderRadius:8, padding:'9px 11px' }}>
-                <div style={{ fontSize:10, color:'#444', fontWeight:500,
+              <div key={b.label} style={{ background:'var(--surface-container-high)', padding:'9px 11px' }}>
+                <div style={{ fontSize:10, color:'var(--on-surface-variant)', fontWeight:600,
                   letterSpacing:'.04em', textTransform:'uppercase', marginBottom:4 }}>{b.label}</div>
                 <div style={{ fontSize:12, color:'#999', lineHeight:1.6 }}>{b.value}</div>
               </div>
@@ -190,9 +206,9 @@ export default function Timeline({ narratives }: { narratives: Narrative[] }) {
 
           {sel.calvinRead && (
             <div style={{ borderLeft:'2px solid #1D9E75', padding:'9px 12px',
-              marginBottom:10, background:'#1a1a1a',
+              marginBottom:10, background:'var(--surface-container-high)',
               borderRadius:'0 8px 8px 0' }}>
-              <div style={{ fontSize:10, color:'#1D9E75', fontWeight:500,
+              <div style={{ fontSize:10, color:'var(--primary)', fontWeight:600,
                 letterSpacing:'.04em', textTransform:'uppercase', marginBottom:3 }}>
                 Calvin's Read
               </div>
@@ -203,14 +219,14 @@ export default function Timeline({ narratives }: { narratives: Narrative[] }) {
           {sel.projects && (
             <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginBottom:8 }}>
               {sel.projects.split(/[,·]/).map(p => p.trim()).filter(Boolean).map(p => (
-                <span key={p} style={{ fontSize:11, color:'#666', background:'#1a1a1a',
+                <span key={p} style={{ fontSize:11, color:'var(--on-surface-variant)', background:'var(--surface-container-high)',
                   padding:'3px 8px', borderRadius:6, border:'0.5px solid #222' }}>{p}</span>
               ))}
             </div>
           )}
 
           {sel.next && (
-            <div style={{ fontSize:11, color:'#444', paddingTop:8,
+            <div style={{ fontSize:11, color:'var(--on-surface-variant)', paddingTop:8,
               borderTop:'0.5px solid #1e1e1e' }}>
               → 다음 내러티브: {sel.next}
             </div>
@@ -218,17 +234,19 @@ export default function Timeline({ narratives }: { narratives: Narrative[] }) {
         </div>
       )}
 
-      {/* 범례 */}
+      {/* 범례 — 실제 데이터에 있는 섹터만 */}
       <div style={{ display:'flex', flexWrap:'wrap', gap:10, marginTop:8,
-        paddingTop:10, borderTop:'0.5px solid #1a1a1a', fontSize:11, color:'#444' }}>
-        {Object.entries(SECTOR_COLORS).slice(0, 8).map(([name, color]) => (
+        paddingTop:10, borderTop:'1px solid var(--outline-variant)', fontSize:11, color:'var(--on-surface-variant)' }}>
+        {Array.from(new Set(placed.map(n => n.sector?.[0]).filter(Boolean)))
+          .map(name => (
           <div key={name} style={{ display:'flex', alignItems:'center', gap:5 }}>
-            <div style={{ width:8, height:8, borderRadius:2, background:color }} />
+            <div style={{ width:8, height:8, borderRadius:2,
+              background: SECTOR_COLORS[name] ?? DEFAULT_COLOR }} />
             {name}
           </div>
         ))}
-        <span style={{ marginLeft:'auto', fontSize:10, color:'#333' }}>
-          bar height = narrative strength
+        <span style={{ marginLeft:'auto', fontSize:10, color:'var(--on-surface-variant)' }}>
+          bar height = strength · glow = 진행 중
         </span>
       </div>
     </div>

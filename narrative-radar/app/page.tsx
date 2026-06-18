@@ -43,11 +43,11 @@ export default async function Home() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
               marginBottom: '1.5rem', flexWrap: 'wrap', gap: 16 }}>
               <div>
-                <div className="data" style={{ fontSize: 11, color: 'var(--accent)',
+                <div className="data" style={{ fontSize: 11, color: 'var(--primary)',
                   letterSpacing: '.12em', textTransform: 'uppercase' }}>Market Overview</div>
-                <h1 className="headline" style={{ fontSize: 28, fontWeight: 700, color: '#fff',
+                <h1 className="headline" style={{ fontSize: 28, fontWeight: 700, color: 'var(--on-surface)',
                   marginTop: 6 }}>마인드쉐어</h1>
-                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                <p style={{ fontSize: 12, color: 'var(--on-surface-variant)', marginTop: 4 }}>
                   VC 시그널 기반 섹터별 attention 분포
                 </p>
               </div>
@@ -59,14 +59,14 @@ export default async function Home() {
             </div>
 
             {/* 시그널 티커 */}
-            <div className="hairline" style={{ background: 'var(--bg-card)', overflow: 'hidden',
+            <div className="hairline" style={{ background: 'var(--surface-container)', overflow: 'hidden',
               height: 40, display: 'flex', alignItems: 'center', marginBottom: '2.5rem' }}>
               <div className="signal-ticker-scroll" style={{ display: 'flex', whiteSpace: 'nowrap' }}>
                 {[0, 1].map(dup => (
                   <div key={dup} style={{ display: 'flex', gap: 32, padding: '0 16px', alignItems: 'center' }}>
                     {feed.slice(0, 6).map(f => (
                       <span key={f.id + dup} className="data" style={{ fontSize: 12,
-                        color: f.direction === '약화' ? 'var(--warn)' : 'var(--accent)' }}>
+                        color: f.direction === '약화' ? 'var(--error)' : 'var(--primary)' }}>
                         {f.source} · {(f.title || f.summary).slice(0, 40)}
                         {f.narrative && <span style={{ opacity: 0.5 }}> / {f.narrative}</span>}
                       </span>
@@ -78,19 +78,19 @@ export default async function Home() {
 
             {/* 시그널 피드 헤더 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <span className="data" style={{ fontSize: 10, color: 'var(--text-faint)',
+              <span className="data" style={{ fontSize: 10, color: 'var(--on-surface-variant)',
                 letterSpacing: '.1em', textTransform: 'uppercase' }}>
                 {isToday ? '오늘 시그널' : '최근 시그널'}
               </span>
               {!isToday && latest && (
                 <span className="data" style={{ fontSize: 10, padding: '1px 8px', borderRadius: 2,
-                  background: 'var(--warn-dim)', color: 'var(--warn)', border: '1px solid var(--warn)' }}>
+                  background: '#ba1a1a14', color: 'var(--error)', border: '1px solid var(--error)' }}>
                   마지막 업데이트 {latest.slice(5)} · {staleDays}일 전
                 </span>
               )}
               {isToday && <span style={{ width: 5, height: 5, borderRadius: '50%',
-                background: 'var(--accent)', display: 'inline-block' }} />}
-              <a href="/daily" style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--accent)' }}>
+                background: 'var(--primary)', display: 'inline-block' }} />}
+              <a href="/daily" style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--primary)' }}>
                 데일리 브리핑 전체 보기 →
               </a>
             </div>
@@ -99,7 +99,7 @@ export default async function Home() {
 
             {/* 타임라인 */}
             <div style={{ marginTop: '3rem' }}>
-              <div className="data" style={{ fontSize: 10, color: 'var(--text-faint)',
+              <div className="data" style={{ fontSize: 10, color: 'var(--on-surface-variant)',
                 letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: 14 }}>
                 내러티브 타임라인 · 2019 → 현재
               </div>

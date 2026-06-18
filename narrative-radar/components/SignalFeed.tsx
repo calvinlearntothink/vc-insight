@@ -34,25 +34,25 @@ export default function SignalFeed({ feed }: { feed: Signal[] }) {
               transition:'opacity .15s',
             }}
           >
-            <div className="data" style={{ fontSize:11, color:'var(--text-faint)', paddingTop:1 }}>
+            <div className="data" style={{ fontSize:11, color:'var(--on-surface-variant)', paddingTop:1 }}>
               {f.date?.slice(5, 10) ?? ''}
             </div>
             <div>
-              <div style={{ fontSize:11, color:'#666', marginBottom:2, fontWeight:500 }}>
+              <div style={{ fontSize:11, color:'var(--on-surface-variant)', marginBottom:2, fontWeight:500 }}>
                 {f.source}
               </div>
-              <div style={{ fontSize:12, color:'#bbb', lineHeight:1.5 }}>
+              <div style={{ fontSize:12, color:'var(--on-surface)', lineHeight:1.5 }}>
                 {f.title || f.summary.slice(0, 80)}
               </div>
               {f.title && f.summary && (
-                <div style={{ fontSize:11, color:'#555', lineHeight:1.5, marginTop:3,
+                <div style={{ fontSize:11, color:'var(--on-surface-variant)', lineHeight:1.5, marginTop:3,
                   display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical',
                   overflow:'hidden' }}>
                   {f.summary}
                 </div>
               )}
               {f.narrative && (
-                <div style={{ fontSize:10, color:'#333', marginTop:3 }}>
+                <div style={{ fontSize:10, color:'var(--outline-variant)', marginTop:3 }}>
                   → {f.narrative}
                 </div>
               )}
@@ -62,9 +62,9 @@ export default function SignalFeed({ feed }: { feed: Signal[] }) {
                 <span className="data"
                 style={{
                   fontSize:10, padding:'2px 7px', borderRadius:2,
-                  background: f.direction === '강화' ? 'var(--accent-dim)' : 'var(--warn-dim)',
-                  color: f.direction === '강화' ? 'var(--accent)' : 'var(--warn)',
-                  border: `1px solid ${f.direction === '강화' ? 'var(--accent)' : 'var(--warn)'}`,
+                  background: f.direction === '강화' ? '#0873df14' : '#ba1a1a14',
+                  color: f.direction === '강화' ? 'var(--primary)' : 'var(--error)',
+                  border: `1px solid ${f.direction === '강화' ? 'var(--primary)' : 'var(--error)'}`,
                   whiteSpace:'nowrap',
                 }}>
                   {f.direction === '강화' ? '↑ 강화' : '↓ 약화'}
@@ -77,19 +77,19 @@ export default function SignalFeed({ feed }: { feed: Signal[] }) {
 
       {/* 상세 */}
       {sel && (
-        <div style={{ background:'var(--bg-card)', border:'1px solid var(--hairline)', borderRadius:2,
-          borderLeft: '3px solid var(--accent)', padding:'1.25rem', marginTop:'1rem' }}>
+        <div style={{ background:'var(--surface-container)', border:'1px solid var(--outline-variant)', borderRadius:2,
+          borderLeft: '3px solid var(--primary)', padding:'1.25rem', marginTop:'1rem' }}>
           <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
             <span style={{ fontSize:14, fontWeight:500 }}>{sel.narrative || sel.title}</span>
-            <span style={{ fontSize:11, color:'#444', marginLeft:'auto' }}>
+            <span style={{ fontSize:11, color:'var(--on-surface-variant)', marginLeft:'auto' }}>
               {sel.date} · {sel.source}
             </span>
           </div>
           <div style={{ background:'#1a1a1a', borderRadius:8, padding:'9px 11px',
             marginBottom:10 }}>
-            <div style={{ fontSize:10, color:'#444', textTransform:'uppercase',
+            <div style={{ fontSize:10, color:'var(--on-surface-variant)', textTransform:'uppercase',
               letterSpacing:'.04em', marginBottom:4 }}>요약</div>
-            <div style={{ fontSize:12, color:'#999', lineHeight:1.6 }}>{sel.summary}</div>
+            <div style={{ fontSize:12, color:'var(--on-surface-variant)', lineHeight:1.6 }}>{sel.summary}</div>
           </div>
           {sel.link && (
             <a href={sel.link} target="_blank" rel="noopener noreferrer"

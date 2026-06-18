@@ -1,18 +1,18 @@
 const NAV_ITEMS = [
-  { key: 'radar', label: 'Radar', href: '/', icon: '◧' },
+  { key: 'radar', label: 'Overview', href: '/', icon: '▦' },
   { key: 'daily', label: 'Briefing', href: '/daily', icon: '▤' },
-  { key: 'timeline', label: 'Timeline', href: '/timeline', icon: '▥' },
+  { key: 'timeline', label: 'Archive', href: '/timeline', icon: '▥' },
 ]
 
 export default function SideNav({ active }: { active: string }) {
   return (
-    <aside className="hairline" style={{
+    <aside style={{
       display: 'none',
       flexDirection: 'column',
-      width: 220,
+      width: 256,
       height: '100%',
-      background: 'var(--bg-card)',
-      borderRight: '1px solid var(--hairline)',
+      background: 'var(--surface-container)',
+      borderRight: '1px solid var(--outline-variant)',
     }}>
       <style>{`
         @media (min-width: 1024px) {
@@ -20,47 +20,48 @@ export default function SideNav({ active }: { active: string }) {
         }
       `}</style>
       <div className="sidenav-desktop" style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
-        <div style={{ padding: '1.5rem 1.25rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)' }} />
-            <h1 className="headline" style={{ fontSize: 16, fontWeight: 700, color: 'var(--accent)' }}>
-              Narrative Radar
-            </h1>
-          </div>
-          <p className="data" style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 4 }}>
+        <div style={{ padding: '1.5rem' }}>
+          <h1 className="headline" style={{ fontSize: 18, fontWeight: 700, color: 'var(--primary)',
+            letterSpacing: '-0.02em' }}>
+            Narrative Radar
+          </h1>
+          <p className="data" style={{ fontSize: 10, color: 'var(--on-surface-variant)',
+            marginTop: 4, opacity: 0.7 }}>
             Intelligence Unit · by Calvin
           </p>
         </div>
 
-        <nav style={{ flex: 1, padding: '0 0.75rem', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <nav style={{ flex: 1, padding: '0 1rem', display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
           {NAV_ITEMS.map(item => {
             const isActive = item.key === active
             return (
               <a key={item.key} href={item.href} style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '10px 14px', borderRadius: 4,
-                color: isActive ? 'var(--accent)' : 'var(--text-muted)',
-                background: isActive ? 'var(--accent-dim)' : 'transparent',
-                fontWeight: isActive ? 600 : 400,
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '12px 16px', borderRadius: 2,
+                color: isActive ? 'var(--primary)' : 'var(--on-surface-variant)',
+                background: isActive ? 'var(--surface-container-highest)' : 'transparent',
+                fontWeight: isActive ? 700 : 400,
                 fontSize: 13,
-                borderRight: isActive ? '2px solid var(--accent)' : '2px solid transparent',
+                borderRight: isActive ? '2px solid var(--primary)' : '2px solid transparent',
               }}>
-                <span style={{ fontSize: 14, opacity: 0.85 }}>{item.icon}</span>
+                <span style={{ fontSize: 15, opacity: 0.8 }}>{item.icon}</span>
                 {item.label}
               </a>
             )
           })}
         </nav>
 
-        <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid var(--hairline)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent)' }} />
-            <span className="data" style={{ fontSize: 9, color: 'var(--accent)', textTransform: 'uppercase' }}>
-              System Online
-            </span>
-          </div>
-          <div className="data" style={{ fontSize: 9, color: 'var(--text-faint)' }}>
-            매일 09:00 KST 업데이트
+        <div style={{ padding: '1rem' }}>
+          <button style={{
+            width: '100%', background: 'var(--primary)', color: 'var(--on-primary)',
+            padding: '11px 16px', borderRadius: 2, border: 'none', cursor: 'pointer',
+            fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em',
+          }}>
+            Upgrade to Pro
+          </button>
+          <div style={{ display: 'flex', gap: 16, marginTop: 14 }}>
+            <span style={{ fontSize: 11, color: 'var(--on-surface-variant)' }}>Help</span>
+            <span style={{ fontSize: 11, color: 'var(--on-surface-variant)' }}>Status</span>
           </div>
         </div>
       </div>
