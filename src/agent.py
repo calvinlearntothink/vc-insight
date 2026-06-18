@@ -151,6 +151,14 @@ def get_source_weight(source: str) -> int:
         return SOURCE_WEIGHTS["default_tweet"]
     return SOURCE_WEIGHTS["default_blog"]
 
+def get_source_type(source: str) -> str:
+    """소스명으로 출처 타입 판별 — VC/X 마인드쉐어 분리 집계에 사용.
+    나중에 다른 출처(온체인, 뉴스, 깃허브 등)를 추가할 때 이 함수에
+    분기만 추가하면 됨."""
+    if any(x in source.lower() for x in ["x 브리핑", "tweet", "트윗", "@"]):
+        return "x"
+    return "vc"
+
 # ── seen 관리 ─────────────────────────────────────────
 def load_seen():
     if os.path.exists(SEEN_FILE):
@@ -846,6 +854,7 @@ def parse_signals(pages, timeframe_days=7):
                         if sector in VALID_SECTORS and direction and not any(n in sector for n in NOISE_KEYWORDS):
                             parsed_sector_signals.append({
                                 "source": source,
+                                "source_type": get_source_type(source),
                                 "sector": sector,
                                 "direction": direction,
                                 "strength": strength,
@@ -872,6 +881,7 @@ def parse_signals(pages, timeframe_days=7):
                             break
                     parsed_sector_signals.append({
                         "source": source,
+                        "source_type": get_source_type(source),
                         "sector": matched_sector or narrative_part[:50],
                         "direction": direction_part,
                         "strength": 5.0,  # 기본 강도
@@ -1042,6 +1052,23 @@ def find_existing_narrative(notion, name):
         print(f"기존 내러티브 검색 오류 ({name}): {e}")
         return None
 
+def ensure_narrative_db_schema(notion):
+    """Narrative Radar DB에 VC 점수/X 점수 속성이 없으면 자동 생성.
+    Notion 권한 문제로 실패해도 클러스터링 자체는 막지 않음 (조용히 스킵)."""
+    try:
+        db = notion.databases.retrieve(database_id=NARRATIVE_DB_ID)
+        existing_props = db.get("properties", {})
+        to_add = {}
+        if "VC 점수" not in existing_props:
+            to_add["VC 점수"] = {"number": {"format": "number"}}
+        if "X 점수" not in existing_props:
+            to_add["X 점수"] = {"number": {"format": "number"}}
+        if to_add:
+            notion.databases.update(database_id=NARRATIVE_DB_ID, properties=to_add)
+            print(f"Narrative Radar DB 속성 자동 생성: {list(to_add.keys())}")
+    except Exception as e:
+        print(f"⚠️ DB 스키마 자동 생성 실패 (수동으로 'VC 점수'/'X 점수' Number 속성 추가 필요): {e}")
+
 def save_narrative_signal_to_notion(result):
     """Narrative Radar DB에 클러스터링 결과 저장 (upsert: 있으면 갱신, 없으면 생성)"""
     if not result or not NARRATIVE_DB_ID:
@@ -1049,6 +1076,7 @@ def save_narrative_signal_to_notion(result):
             print("⚠️ NARRATIVE_DATABASE_ID 미설정 — Narrative Radar DB 저장 건너뜀")
         return
     notion = Client(auth=NOTION_API_KEY)
+    ensure_narrative_db_schema(notion)
     today = result.get("date", datetime.now().strftime("%Y-%m-%d"))
 
     STATUS_MAP = {
@@ -1082,6 +1110,8 @@ def save_narrative_signal_to_notion(result):
             props = {
                 "상태":      {"select": {"name": status}},
                 "강도":      {"number": min(10.0, float(n.get("score", 0)))},  # 과거 DB와 동일한 1-10 스케일로 클램프
+                "VC 점수":   {"number": round(float(n.get("vc_score", 0)), 1)},
+                "X 점수":    {"number": round(float(n.get("x_score", 0)), 1)},
                 "모멘텀":    {"select": {"name": momentum}},
                 "한줄 요약": {"rich_text": [{"text": {"content": content}}]},
                 "근거 소스": {"rich_text": [{"text": {"content": sources_text}}]},
@@ -1374,7 +1404,7 @@ def run_monthly_briefing():
     print("--- 먼슬리 브리핑 완료 ---\n")
 
 def run_narrative_clustering():
-    """내러티브 클러스터링 전체 실행 — 7D/30D/6M 타임프레임"""
+    """내러티브 클러스터링 전체 실행 — 7D/30D 타임프레임 + VC/X 마인드쉐어 분리"""
     print("\n--- 내러티브 클러스터링 시작 ---")
 
     # 7일 (단기 트렌드)
@@ -1388,12 +1418,23 @@ def run_narrative_clustering():
     pages_30d = fetch_recent_signals(days=30)
     signals_30d = parse_signals(pages_30d, timeframe_days=30) if pages_30d else []
 
-    # 7일 기준으로 클러스터링 (메인)
+    # 7일 기준으로 클러스터링 (메인, 전체 통합 — VC+X 합산)
     signals = signals_7d
     if not signals:
         print("파싱된 시그널 없음")
         return
     sector_map = aggregate_signals(signals)
+
+    # VC 전용 / X 전용 마인드쉐어 별도 집계
+    # (나중에 다른 출처 추가 시 여기에 같은 패턴으로 한 줄만 추가하면 됨)
+    vc_signals = [s for s in signals if s.get("source_type") == "vc"]
+    x_signals  = [s for s in signals if s.get("source_type") == "x"]
+    vc_map = aggregate_signals(vc_signals) if vc_signals else {}
+    x_map  = aggregate_signals(x_signals) if x_signals else {}
+
+    for name, data in sector_map.items():
+        data["vc_score"] = vc_map.get(name, {}).get("mindshare_score", 0)
+        data["x_score"]  = x_map.get(name, {}).get("mindshare_score", 0)
 
     # 30일 모멘텀 보조 정보 추가
     if signals_30d:
@@ -1406,11 +1447,18 @@ def run_narrative_clustering():
     narrative_map = sector_map  # 하위 호환
     print(f"집계된 섹터: {len(sector_map)}개")
     for name, data in sorted(sector_map.items(), key=lambda x: x[1].get("mindshare_score",0), reverse=True):
-        print(f"  {name}: 마인드쉐어 {data.get('mindshare_score',0)} (시그널 {data['signal_count']}개, 방향: {data.get('dominant_direction','')})")
+        print(f"  {name}: 마인드쉐어 {data.get('mindshare_score',0)} (VC:{data.get('vc_score',0)} / X:{data.get('x_score',0)}) (시그널 {data['signal_count']}개, 방향: {data.get('dominant_direction','')})")
     cluster_result = claude_cluster(sector_map)
     if not cluster_result:
         print("클러스터링 실패")
         return
+
+    # Claude가 재구성한 narrative 목록에 VC/X 점수를 섹터명 매칭으로 다시 주입
+    for n in cluster_result.get("narratives", []):
+        matched = sector_map.get(n.get("narrative", "")) or sector_map.get(n.get("sector", ""))
+        n["vc_score"] = matched.get("vc_score", 0) if matched else 0
+        n["x_score"]  = matched.get("x_score", 0) if matched else 0
+
     msg = format_narrative_signal_message(cluster_result)
     if msg:
         send_telegram(msg)
