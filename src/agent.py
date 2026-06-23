@@ -1109,7 +1109,7 @@ def save_narrative_signal_to_notion(result):
             # 공통 속성 (생성/갱신 양쪽에 사용)
             props = {
                 "상태":      {"select": {"name": status}},
-                "강도":      {"number": min(10.0, float(n.get("score", 0)))},  # 과거 DB와 동일한 1-10 스케일로 클램프
+                "강도":      {"number": round(float(n.get("score", 0)), 1)},  # 0-100 마인드쉐어 스코어 그대로 저장
                 "VC 점수":   {"number": round(float(n.get("vc_score", 0)), 1)},
                 "X 점수":    {"number": round(float(n.get("x_score", 0)), 1)},
                 "모멘텀":    {"select": {"name": momentum}},
